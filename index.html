@@ -453,7 +453,9 @@ label{display:block;font-size:.75rem;font-weight:600;color:var(--muted);margin-b
   </div>
 </div>
 
-<div id="toast-container"></div><script>
+<div id="toast-container"></div>
+<script src="https://accounts.google.com/gsi/client" async></script> 
+  <script>
 'use strict';
 
 // ═══════════════════════════════════════════════════════════
@@ -1233,7 +1235,7 @@ function renderEventCards(events) {
   if (!filtered.length) { grid.innerHTML='<div style="color:var(--muted);grid-column:1/-1;padding:40px;text-align:center">No events found.</div>'; return; }
   grid.innerHTML = filtered.map(ev => ev.type==='race' ? renderRaceCard(ev) : renderMatchCard(ev)).join('');
 }
-<script src="https://accounts.google.com/gsi/client" async></script>// ═══════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════
 // AI CONTENT
 // ═══════════════════════════════════════════════════════════
 function generateAIContent() {
@@ -1544,7 +1546,8 @@ function addRecentPost(title, url, status) {
   div.innerHTML=`<span class="post-badge ${(status||'').toLowerCase()}">${status}</span><span style="flex:1;font-size:.82rem">${title}</span>${url?`<a href="${url}" target="_blank" style="font-size:.72rem">View</a>`:''}`;
   list.prepend(div);
   document.getElementById('stat-posted').textContent=parseInt(document.getElementById('stat-posted').textContent||0)+1;
-}// ═══════════════════════════════════════════════════════════
+} 
+    // ═══════════════════════════════════════════════════════════
 // COMPOSE HELPERS
 // ═══════════════════════════════════════════════════════════
 function previewPost() {
@@ -1978,7 +1981,8 @@ async function doImgbbUpload(cvId,outId){
 function downloadThumb(){
   const a=document.createElement('a');a.download='sports803-thumb.jpg';
   a.href=document.getElementById('thumb-canvas-big').toDataURL('image/jpeg',.92);a.click();
-}// ═══════════════════════════════════════════════════════════
+} 
+    // ═══════════════════════════════════════════════════════════
 // STAT BAR
 // ═══════════════════════════════════════════════════════════
 function updateStatBar(){
