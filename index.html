@@ -1022,24 +1022,44 @@ function logoImg(url, teamName) {
 // ═══════════════════════════════════════════════════════════
 // CANVAS LOGO LOADER — for thumbnail builder
 // ═══════════════════════════════════════════════════════════
-async function loadImgForCanvas(url) {
-  if (!url) return null;
-  const sources = [
-    weservProxy(url, 300),
-    `https://images.weserv.nl/?url=${encodeURIComponent(url)}&w=300&h=300&fit=contain`,
-    url,
-  ];
-  for (const src of sources) {
-    const result = await new Promise(res => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      const t = setTimeout(() => res(null), 7000);
-      img.onload  = () => { clearTimeout(t); res(img); };
-      img.onerror = () => { clearTimeout(t); res(null); };
-      img.src = src;
-    });
-    if (result) return result;
+async function loadImgForCanvas(url, teamName = '') {
+  const tryLoad = (src) => new Promise(res => {
+    if (!src) return res(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const t = setTimeout(() => res(null), 7000);
+    img.onload  = () => { clearTimeout(t); res(img); };
+    img.onerror = () => { clearTimeout(t); res(null); };
+    img.src = src;
+  });
+
+  // Try wsrv proxy first
+  if (url) {
+    const r = await tryLoad(weservProxy(url, 300));
+    if (r) return r;
   }
+
+  // Try legacy proxy
+  if (url) {
+    const r = await tryLoad(`https://images.weserv.nl/?url=${encodeURIComponent(url)}&w=300&h=300&fit=contain&output=png`);
+    if (r) return r;
+  }
+
+  // Try direct URL
+  if (url) {
+    const r = await tryLoad(url);
+    if (r) return r;
+  }
+
+  // TSDB fallback by team name
+  if (teamName) {
+    const tsdbUrl = await fetchLogoFromTSDB(teamName);
+    if (tsdbUrl) {
+      const r = await tryLoad(weservProxy(tsdbUrl, 300)) || await tryLoad(tsdbUrl);
+      if (r) return r;
+    }
+  }
+
   return null;
 }
 
@@ -1982,24 +2002,90 @@ async function quickPost(sid) {
   if (!accessToken) { toast('Sign in first','error'); return; }
   const ev = findEvent(sid);
   if (!ev) { toast('Event not found','error'); return; }
+
   const title = ev.type==='race'
     ? `${ev.name} – Race Preview & Live Stream | Sports 803`
     : `${ev.home.name} vs ${ev.away.name} – ${ev.league.name} Live Stream | Sports 803`;
+
   const body   = buildArticle(title, ev);
-  const html   = body.replace(/\n/g,'<br>');
   const labels = getLabelsForEvent(ev);
+
+  // Auto-generate thumbnail
+  toast('Generating thumbnail…','info');
+  let thumbHtml = '';
+  try {
+    const cv = document.createElement('canvas');
+    cv.width = 800; cv.height = 420;
+
+    if (ev.type === 'race') {
+      await drawRaceThumb(cv, {
+        name:       ev.name,
+        league:     ev.league.name,
+        leagueIcon: ev.league.icon,
+        datetime:   ev.startTime ? ev.startTime.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '',
+        venue:      ev.venue || '',
+        bg1:        '#0a0e1a',
+        bg2:        '#1a0a00',
+        bannerUrl:  getRaceImage(ev)
+      });
+    } else {
+      // Resolve logos before drawing
+      let hLogo = ev.home.logo || '';
+      let aLogo = ev.away.logo || '';
+      if (!hLogo) hLogo = await fetchLogoFromTSDB(ev.home.name) || '';
+      if (!aLogo) aLogo = await fetchLogoFromTSDB(ev.away.name) || '';
+
+      await drawMatchThumb(cv, {
+        home:       ev.home.name,
+        away:       ev.away.name,
+        hLogo,
+        aLogo,
+        league:     ev.league.name,
+        leagueIcon: ev.league.icon,
+        datetime:   ev.startTime ? ev.startTime.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '',
+        bg1:        '#0d1b2a',
+        bg2:        '#1a0020'
+      });
+    }
+
+    // Upload to imgbb if key exists, otherwise embed as base64
+    if (CFG.imgbbKey) {
+      const base64 = cv.toDataURL('image/jpeg', .93).split(',')[1];
+      const fd = new FormData();
+      fd.append('key', CFG.imgbbKey);
+      fd.append('image', base64);
+      const res  = await fetch('https://api.imgbb.com/1/upload', {method:'POST', body:fd});
+      const data = await res.json();
+      if (data.success) {
+        thumbHtml = `<div><img src="${data.data.url}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="${title}"></div>\n`;
+        toast('Thumbnail uploaded ✓','success');
+      } else {
+        // Fallback to base64 embed
+        thumbHtml = `<div><img src="${cv.toDataURL('image/jpeg',.85)}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="${title}"></div>\n`;
+      }
+    } else {
+      // No imgbb key — embed base64 directly
+      thumbHtml = `<div><img src="${cv.toDataURL('image/jpeg',.85)}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="${title}"></div>\n`;
+    }
+  } catch(e) {
+    console.warn('Thumbnail generation failed:', e);
+    toast('Thumbnail skipped','warn');
+  }
+
+  const html = thumbHtml + body.replace(/\n/g,'<br>');
+
   toast(`Posting: ${title.substring(0,40)}…`, 'info');
   const post = await postToBloggerRaw(title, html, CFG.schedStatus||'DRAFT', labels);
   if (post) {
     setPostLog(ev, {
-      postId:   post.id,
-      postUrl:  post.url,
-      status:   post.status || 'DRAFT',
+      postId:  post.id,
+      postUrl: post.url,
+      status:  post.status || 'DRAFT',
       title,
-      league:   ev.league.name
+      league:  ev.league.name
     });
     renderEventCards(allEvents);
-    toast('Posted ✓', 'success');
+    toast('Posted with thumbnail ✓','success');
   }
 }
 
@@ -2518,7 +2604,7 @@ async function drawMatchThumb(cv, opts) {
   const { home, away, hLogo, aLogo, league, leagueIcon, datetime, bg1, bg2 } = opts;
   const W=cv.width, H=cv.height, cx=W/2, cy=H/2, scale=W/800;
   const ctx = cv.getContext('2d');
-  const [hImg, aImg] = await Promise.all([loadImgForCanvas(hLogo), loadImgForCanvas(aLogo)]);
+  const [hImg, aImg] = await Promise.all([   loadImgForCanvas(hLogo, home),   loadImgForCanvas(aLogo, away) ]);
 
   ctx.clearRect(0,0,W,H);
 
@@ -2600,7 +2686,7 @@ async function drawRaceThumb(cv, opts) {
   const { name, league, leagueIcon, datetime, venue, bg1, bg2, bannerUrl } = opts;
   const W=cv.width, H=cv.height, cx=W/2, scale=W/800;
   const ctx = cv.getContext('2d');
-  const bgImg = await loadImgForCanvas(bannerUrl);
+  const bgImg = await loadImgForCanvas(bannerUrl, name);
 
   ctx.clearRect(0,0,W,H);
   const bg = ctx.createLinearGradient(0,0,W,H);
@@ -2684,26 +2770,56 @@ function debuildThumbnail() {
 
 function getThumbSize() { return parseInt(document.getElementById('tb-quality')?.value||800); }
 
-function buildThumbnail() {
+async function buildThumbnail() {
   const size   = getThumbSize();
   const cv     = document.getElementById('thumb-canvas-big');
   const aspect = document.getElementById('tb-aspect')?.value || '16:9';
   const ratios = {'16:9':0.5625,'1:1':1,'9:16':1.778};
   cv.width  = aspect==='9:16' ? Math.round(size*0.5625) : size;
   cv.height = Math.round(cv.width * (ratios[aspect]||0.5625));
-  const home  = document.getElementById('tb-home').value||'Event';
-  const away  = document.getElementById('tb-away').value||'';
-  const lg    = document.getElementById('tb-league').value||'';
-  const dt    = document.getElementById('tb-datetime').value||'';
-  const bg1   = document.getElementById('tb-bg1').value;
-  const bg2   = document.getElementById('tb-bg2').value;
-  const banner= document.getElementById('tb-banner').value.trim();
-  const hLogo = document.getElementById('tb-home-logo').value.trim();
-  const aLogo = document.getElementById('tb-away-logo').value.trim();
+
+  const home   = document.getElementById('tb-home').value || 'Event';
+  const away   = document.getElementById('tb-away').value || '';
+  const lg     = document.getElementById('tb-league').value || '';
+  const dt     = document.getElementById('tb-datetime').value || '';
+  const bg1    = document.getElementById('tb-bg1').value;
+  const bg2    = document.getElementById('tb-bg2').value;
+  const banner = document.getElementById('tb-banner').value.trim();
+  let hLogo    = document.getElementById('tb-home-logo').value.trim();
+  let aLogo    = document.getElementById('tb-away-logo').value.trim();
+
   if (away) {
-    drawMatchThumb(cv, {home,away,hLogo,aLogo,league:lg,leagueIcon:'',datetime:dt,bg1,bg2});
+    // Auto-fetch logos from TSDB if fields are empty
+    if (!hLogo && home && home !== 'Event') {
+      toast('Looking up home logo…','info');
+      hLogo = await fetchLogoFromTSDB(home) || '';
+      if (hLogo) {
+        document.getElementById('tb-home-logo').value = hLogo;
+        toast(`Home logo found ✓`,'success');
+      } else {
+        toast('No logo found for '+home,'warn');
+      }
+    }
+    if (!aLogo && away) {
+      toast('Looking up away logo…','info');
+      aLogo = await fetchLogoFromTSDB(away) || '';
+      if (aLogo) {
+        document.getElementById('tb-away-logo').value = aLogo;
+        toast(`Away logo found ✓`,'success');
+      } else {
+        toast('No logo found for '+away,'warn');
+      }
+    }
+
+    await drawMatchThumb(cv, {
+      home, away, hLogo, aLogo,
+      league: lg, leagueIcon: '', datetime: dt, bg1, bg2
+    });
   } else {
-    drawRaceThumb(cv,  {name:home,league:lg,leagueIcon:'',datetime:dt,venue:'',bg1,bg2,bannerUrl:banner});
+    await drawRaceThumb(cv, {
+      name: home, league: lg, leagueIcon: '',
+      datetime: dt, venue: '', bg1, bg2, bannerUrl: banner
+    });
   }
 }
 
@@ -2711,11 +2827,42 @@ async function generateThumbnail() {
   const title = document.getElementById('post-title').value;
   const parts = title.split(/\s+vs\s+/i);
   const cv    = document.getElementById('thumb-canvas');
-  cv.width=380; cv.height=200;
-  if (parts.length>=2) {
-    await drawMatchThumb(cv,{home:parts[0].trim(),away:parts[1].split(/[–\-|]/)[0].trim(),hLogo:'',aLogo:'',league:'',leagueIcon:'',datetime:'',bg1:'#0d1b2a',bg2:'#1a0020'});
+  cv.width = 380; cv.height = 200;
+
+  if (parts.length >= 2) {
+    const home = parts[0].trim();
+    const away = parts[1].split(/[–\-|]/)[0].trim();
+
+    toast('Fetching logos…','info');
+    // Try to get logos from TSDB
+    const [hLogo, aLogo] = await Promise.all([
+      fetchLogoFromTSDB(home),
+      fetchLogoFromTSDB(away)
+    ]);
+
+    await drawMatchThumb(cv, {
+      home, away,
+      hLogo: hLogo || '',
+      aLogo: aLogo || '',
+      league:     '',
+      leagueIcon: '',
+      datetime:   '',
+      bg1: '#0d1b2a',
+      bg2: '#1a0020'
+    });
+    toast('Thumbnail generated ✓','success');
   } else {
-    await drawRaceThumb(cv,{name:title,league:'',leagueIcon:'',datetime:'',venue:'',bg1:'#0a0e1a',bg2:'#1a0010',bannerUrl:''});
+    await drawRaceThumb(cv, {
+      name:       title,
+      league:     '',
+      leagueIcon: '',
+      datetime:   '',
+      venue:      '',
+      bg1:        '#0a0e1a',
+      bg2:        '#1a0010',
+      bannerUrl:  ''
+    });
+    toast('Thumbnail generated ✓','success');
   }
 }
 
