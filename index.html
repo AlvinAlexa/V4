@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>SPORTS STREAM · Intelligent Multi-Source Player</title>
-  <!-- Google Analytics (gtag) from original -->
+  <!-- Google Analytics (gtag) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y5EVJ9NQ5B"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
@@ -45,7 +45,58 @@
       flex-direction: column;
     }
 
-    /* Video & iframe containers */
+    /* Top bar (source buttons) – sits above the video */
+    .source-bar {
+      flex-shrink: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 8px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      z-index: 20;
+    }
+
+    .source-btn {
+      background: rgba(20, 20, 30, 0.9);
+      border: none;
+      color: #eee;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 60px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 0.3px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .source-btn.active {
+      background: #e10600;
+      color: white;
+      box-shadow: 0 0 10px rgba(225,6,0,0.6);
+    }
+    .source-btn.auto {
+      background: #2c3e66;
+      border: 1px solid #5a7db0;
+    }
+    .source-btn.auto.active {
+      background: #e10600;
+      border-color: #ff6b5c;
+    }
+    .source-btn:active { transform: scale(0.96); }
+
+    /* Main video area – takes remaining space */
+    .video-area {
+      flex: 1;
+      position: relative;
+      background: #000;
+      overflow: hidden;
+    }
+
     .video-wrapper, .iframe-wrapper {
       position: absolute;
       top: 0;
@@ -73,59 +124,10 @@
       background: #000;
     }
 
-    /* Top button bar (repositioned above video) */
-    .server-bar {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 30;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 10px;
-      padding: 12px 16px;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid rgba(255,255,255,0.2);
-      transition: opacity 0.3s;
-      pointer-events: auto;
-    }
-    .server-btn {
-      background: rgba(20,20,30,0.9);
-      border: none;
-      color: #eee;
-      font-size: 13px;
-      font-weight: 600;
-      padding: 8px 16px;
-      border-radius: 60px;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      backdrop-filter: blur(4px);
-      letter-spacing: 0.3px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-      font-family: inherit;
-      white-space: nowrap;
-    }
-    .server-btn.active {
-      background: #e10600;
-      color: white;
-      box-shadow: 0 0 10px rgba(225,6,0,0.6);
-    }
-    .server-btn.auto {
-      background: #2c3e66;
-      border: 1px solid #5a7db0;
-    }
-    .server-btn.auto.active {
-      background: #e10600;
-      border-color: #ff6b5c;
-    }
-    .server-btn:active { transform: scale(0.96); }
-
-    /* Quality selector (top right, stays on top) */
+    /* Quality selector (floating over video) */
     .quality-panel {
       position: absolute;
-      top: 12px;
+      top: 16px;
       right: 16px;
       z-index: 35;
       background: rgba(0,0,0,0.7);
@@ -189,10 +191,10 @@
     }
     .big-play:active { transform: translate(-50%, -50%) scale(0.94); }
 
-    /* Toast */
+    /* Toast messages */
     .toast-msg {
       position: absolute;
-      bottom: 100px;
+      bottom: 90px;
       left: 50%;
       transform: translateX(-50%);
       background: rgba(0,0,0,0.85);
@@ -209,9 +211,7 @@
       transition: opacity 0.2s;
       border: 1px solid rgba(255,255,255,0.2);
     }
-    .toast-msg.show {
-      opacity: 1;
-    }
+    .toast-msg.show { opacity: 1; }
 
     /* Error overlay */
     .error-overlay {
@@ -274,7 +274,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text { color: white; font-size: 13px; letter-spacing: 0.5px; }
 
-    /* fullscreen hint */
+    /* Fullscreen hint */
     .fullscreen-hint {
       position: absolute;
       bottom: 90px;
@@ -293,8 +293,8 @@
     }
 
     @media (max-width: 680px) {
-      .server-btn { padding: 6px 12px; font-size: 11px; }
-      .quality-panel { top: 8px; right: 8px; padding: 4px 8px; }
+      .source-btn { padding: 6px 12px; font-size: 11px; }
+      .quality-panel { top: 12px; right: 12px; padding: 4px 8px; }
       #qualitySelect { padding: 4px 8px; font-size: 10px; }
       .big-play { width: 70px; height: 70px; }
       .big-play svg { width: 36px; height: 36px; }
@@ -303,20 +303,29 @@
 </head>
 <body>
 <div class="player-stage" id="playerStage">
-  <div class="video-wrapper" id="videoContainer">
-    <video id="videoElement" playsinline muted></video>
-    <div class="big-play" id="bigPlayBtn">
-      <svg viewBox="0 0 24 24"><polygon points="8,5 8,19 19,12" fill="white"/></svg>
+  <!-- Source buttons (above video) -->
+  <div class="source-bar" id="sourceBar"></div>
+
+  <!-- Main video area -->
+  <div class="video-area">
+    <div class="video-wrapper" id="videoContainer">
+      <video id="videoElement" playsinline muted></video>
+      <div class="big-play" id="bigPlayBtn">
+        <svg viewBox="0 0 24 24"><polygon points="8,5 8,19 19,12" fill="white"/></svg>
+      </div>
+    </div>
+    <div class="iframe-wrapper" id="iframeContainer">
+      <iframe id="embedIframe" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation allow-top-navigation-by-user-activation"></iframe>
+    </div>
+
+    <!-- Quality selector (floating) -->
+    <div class="quality-panel" id="qualityPanel">
+      <span class="quality-label">🔘 QUALITY</span>
+      <select id="qualitySelect"></select>
     </div>
   </div>
-  <div class="iframe-wrapper" id="iframeContainer">
-    <iframe id="embedIframe" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation allow-top-navigation-by-user-activation"></iframe>
-  </div>
-  <div class="server-bar" id="serverBar"></div>
-  <div class="quality-panel" id="qualityPanel">
-    <span class="quality-label">🔘 QUALITY</span>
-    <select id="qualitySelect"></select>
-  </div>
+
+  <!-- Toast, error, loading overlays -->
   <div class="toast-msg" id="toastMsg"></div>
   <div class="error-overlay" id="errorOverlay">
     <div class="error-icon">⚠️</div>
@@ -356,23 +365,19 @@
 
     // Generate friendly button label based on type, order, and optional custom label
     function generateFriendlyLabel(stream, index, totalStreams) {
-      // If custom label provided via URL|Name, use it
       if (stream.customLabel) return stream.customLabel;
-
       const type = stream.type;
-      // Count how many of same type before this stream
       let typeCounter = 1;
       for (let i = 0; i < index; i++) {
         if (streams[i] && streams[i].type === type) typeCounter++;
       }
-
       if (type === 'hls') {
         if (typeCounter === 1) return '📱 iPhone / iOS';
         else return `📱 Backup HD ${typeCounter}`;
       } else if (type === 'dash') {
         if (typeCounter === 1) return '💻 HD Stream';
         else return `💻 Stream ${typeCounter}`;
-      } else { // iframe / embed
+      } else {
         if (typeCounter === 1) return '🌐 Alt Stream';
         else return `🌐 Stream ${typeCounter}`;
       }
@@ -390,12 +395,12 @@
       return { url, type, label: '', customLabel, original: rawUrl, sourceType };
     }
 
-    // Priority for sorting: for iOS, HLS > iframe > DASH (but DASH will be skipped later)
+    // Priority for sorting: for iOS, HLS > iframe > DASH (DASH skipped later)
     function priorityWeight(stream, ios) {
       if (ios) {
         if (stream.type === 'hls') return 1;
         if (stream.type === 'iframe') return 2;
-        return 10; // dash on iOS = last
+        return 10;
       } else {
         if (stream.type === 'hls') return 1;
         if (stream.type === 'dash') return 2;
@@ -412,9 +417,7 @@
         embedStream.type = 'iframe';
         streams.push(embedStream);
       });
-      if (streams.length === 0) {
-        console.warn('No streams provided');
-      }
+      if (streams.length === 0) console.warn('No streams provided');
       const ios = isIOS();
       streams.sort((a,b) => priorityWeight(a, ios) - priorityWeight(b, ios));
       // Assign friendly labels after sorting
@@ -434,7 +437,7 @@
     let iframeElement = document.getElementById('embedIframe');
     let videoContainer = document.getElementById('videoContainer');
     let iframeContainer = document.getElementById('iframeContainer');
-    let serverBar = document.getElementById('serverBar');
+    let sourceBar = document.getElementById('sourceBar');
     let qualityPanel = document.getElementById('qualityPanel');
     let qualitySelect = document.getElementById('qualitySelect');
     let toastMsg = document.getElementById('toastMsg');
@@ -659,7 +662,7 @@
         return false;
       }
 
-      // iOS: if stream type is dash, skip to next
+      // iOS: skip DASH
       if (isIOS() && streams[index].type === 'dash') {
         showToast(`📱 iPhone doesn't support DASH, skipping to next source`, 2000);
         trackEvent('iOS', 'Skip DASH', streams[index].label, index+1);
@@ -691,7 +694,7 @@
           currentPlayerType = 'iframe';
         }
         showLoading(false);
-        updateServerButtonsActive(index);
+        updateSourceButtonsActive(index);
         retryCounter = 0;
         if (currentPlayerType !== 'iframe') {
           videoElement.addEventListener('play', () => bigPlayBtn.classList.remove('visible'), { once: true });
@@ -739,11 +742,11 @@
       playStreamByIndex(index, false);
     }
 
-    function renderServerButtons() {
-      serverBar.innerHTML = '';
+    function renderSourceButtons() {
+      sourceBar.innerHTML = '';
       // Auto button
       const autoBtn = document.createElement('button');
-      autoBtn.className = 'server-btn auto';
+      autoBtn.className = 'source-btn auto';
       autoBtn.textContent = '⚡ AUTO';
       autoBtn.onclick = () => {
         if (streams.length) {
@@ -753,21 +756,21 @@
           showToast('No streams available');
         }
       };
-      serverBar.appendChild(autoBtn);
+      sourceBar.appendChild(autoBtn);
 
       streams.forEach((stream, idx) => {
         const btn = document.createElement('button');
-        btn.className = 'server-btn';
+        btn.className = 'source-btn';
         btn.textContent = stream.label;
         btn.dataset.index = idx;
         btn.onclick = () => switchToStream(idx);
-        serverBar.appendChild(btn);
+        sourceBar.appendChild(btn);
       });
-      updateServerButtonsActive(currentStreamIndex);
+      updateSourceButtonsActive(currentStreamIndex);
     }
 
-    function updateServerButtonsActive(activeIdx) {
-      const btns = document.querySelectorAll('.server-btn');
+    function updateSourceButtonsActive(activeIdx) {
+      const btns = document.querySelectorAll('.source-btn');
       btns.forEach((btn, i) => {
         if (i === 0 && activeIdx === 0) btn.classList.add('active');
         else if (i-1 === activeIdx) btn.classList.add('active');
@@ -844,13 +847,13 @@
     async function init() {
       streams = buildStreamList();
       if (streams.length === 0) {
-        serverBar.innerHTML = '<div style="color:#aaa; padding: 6px;">⚠️ No streams provided. Use ?mora=URL or ?embed=URL</div>';
+        sourceBar.innerHTML = '<div style="color:#aaa; padding: 6px;">⚠️ No streams provided. Use ?mora=URL or ?embed=URL</div>';
         showErrorOverlay('No Streams', 'Add ?mora=stream.m3u8 or ?embed=page.html to URL', false);
         showLoading(false);
         trackEvent('App', 'No Streams', 'Configuration error');
         return;
       }
-      renderServerButtons();
+      renderSourceButtons();
       await loadDependencies().catch(err => console.warn("Lib load err", err));
       playStreamByIndex(0, false);
       setupFirstFullscreen();
