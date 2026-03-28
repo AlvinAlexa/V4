@@ -954,7 +954,44 @@ document.addEventListener('keydown',e=>{
 });
 
 /* ── Fullscreen / PiP ───────────────────────────────── */
-function toggleFullscreen(){if(!document.fullscreenElement)D.stage.requestFullscreen().catch(()=>toast('Fullscreen unavailable'));else document.exitFullscreen();}
+function toggleFullscreen() {
+  // Exit fullscreen if already active
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => toast('Exit fullscreen failed'));
+    return;
+  }
+
+  // 1. JWPlayer specific fullscreen
+  if (curAdapter === 'jwplayer' && curPlayer && typeof curPlayer.setFullscreen === 'function') {
+    curPlayer.setFullscreen(true);
+    return;
+  }
+
+  // 2. Embed stream: try to fullscreen the iframe
+  if (curStream && curStream.type === 'embed' && D.embedFrame) {
+    if (D.embedFrame.requestFullscreen) {
+      D.embedFrame.requestFullscreen().catch(() => toast('Fullscreen unavailable'));
+    } else if (D.embedFrame.webkitEnterFullscreen) {
+      D.embedFrame.webkitEnterFullscreen(); // iOS Safari fallback
+    }
+    return;
+  }
+
+  // 3. Find any video element inside the stage
+  const videoElem = D.stage.querySelector('video');
+  if (videoElem) {
+    if (videoElem.requestFullscreen) {
+      videoElem.requestFullscreen().catch(() => toast('Fullscreen unavailable'));
+      return;
+    } else if (videoElem.webkitEnterFullscreen) {
+      videoElem.webkitEnterFullscreen(); // iOS Safari
+      return;
+    }
+  }
+
+  // 4. Final fallback (may fail on iOS, but better than nothing)
+  D.stage.requestFullscreen().catch(() => toast('Fullscreen not supported on this device'));
+}
 function togglePiP(){
   if(!curPlayer||!(curPlayer instanceof HTMLVideoElement)){toast('PiP not available for this player');return;}
   if(document.pictureInPictureElement)document.exitPictureInPicture();
