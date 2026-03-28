@@ -70,15 +70,23 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
 .source-btn.auto.active { background: var(--accent); border-color: #ff6b5c; }
 .source-btn:active { transform: scale(0.96); }
 
-/* Video area */
+/* Video area - FIXED LAYOUT (critical fix) */
 #stage {
   position: fixed;
   inset: 0;
   z-index: 100;
   background: #000;
 }
-#stage.tabs-visible { top: 54px; } /* space for source bar */
-.video-area { position: relative; width: 100%; height: 100%; background: #000; }
+.video-area { 
+  position: absolute; 
+  inset: 0; 
+  background: #000; 
+}
+#stage.tabs-visible .video-area { 
+  top: 54px; 
+  height: calc(100% - 54px); 
+}
+
 #player-host, #embed-host { position: absolute; inset: 0; background: #000; }
 #player-host { z-index: 2; display: none; }
 #embed-host { z-index: 3; display: none; flex-direction: column; }
@@ -201,7 +209,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
 
 @media (max-width: 680px) {
   .source-btn { padding: 6px 12px; font-size: 11px; }
-  #stage.tabs-visible { top: 48px; }
+  #stage.tabs-visible .video-area { top: 48px; height: calc(100% - 48px); }
   .controls-row .control-group:first-child { display: none; }
   .control-slider { width: 70px; }
   .quality-selector { padding: 4px 8px; font-size: 10px; }
@@ -260,7 +268,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
     MAX_RETRIES: 2,
     GESTURE_THRESHOLD: 60,
     PROXY_FACTORIES: [
-      url => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+      // 2026 working & fast proxies (corsproxy.io is now the fastest)
+      url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
       url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
       url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
     ],
@@ -449,22 +458,27 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
     } catch (err) { throw err; }
   }
 
-  // ========== Build streams from URL params ==========
+  // ========== Build streams from URL params (NOW PARALLEL) ==========
   async function buildStreams() {
     const params = new URLSearchParams(location.search);
     const moraUrls = params.getAll('mora').filter(isSafeUrl);
     const embedUrls = params.getAll('embed').filter(isSafeUrl);
     const streamList = [];
-    for (let i=0; i<moraUrls.length; i++) {
-      try {
-        const resolved = await resolveStream(moraUrls[i], true);
-        resolved.originalUrl = moraUrls[i];
-        streamList.push(resolved);
-      } catch(e) { console.warn(`Failed mora ${i}`, e); }
-    }
-    for (let i=0; i<embedUrls.length; i++) {
-      streamList.push({ type: 'iframe', url: embedUrls[i], originalUrl: embedUrls[i] });
-    }
+
+    // Parallel resolution for much faster startup
+    const moraPromises = moraUrls.map(url => 
+      resolveStream(url, true).then(resolved => ({ ...resolved, originalUrl: url })).catch(e => {
+        console.warn(`Failed mora ${url}`, e);
+        return null;
+      })
+    );
+    const moraResults = await Promise.allSettled(moraPromises);
+    moraResults.forEach(r => { if (r.status === 'fulfilled' && r.value) streamList.push(r.value); });
+
+    embedUrls.forEach(url => {
+      streamList.push({ type: 'iframe', url, originalUrl: url });
+    });
+
     // Sort: iOS prefers HLS > iframe > dash; others HLS > dash > iframe
     streamList.sort((a,b) => {
       const weight = (s) => {
@@ -476,6 +490,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
       };
       return weight(a) - weight(b);
     });
+
     // Assign nice labels
     return streamList.map((s, idx) => {
       let label = '';
@@ -504,9 +519,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
     DOM.playerHost.appendChild(video);
     DOM.playerHost.style.display = 'block';
     DOM.embedHost.classList.remove('active');
-    const hls = new Hls({ enableWorker: true, lowLatencyMode: true, startLevel: -1, xhrSetup: (xhr, url) => {
-      if (stream.originalUrl) xhr.setRequestHeader('Referer', stream.originalUrl);
-    } });
+    const hls = new Hls({ 
+      enableWorker: true, 
+      lowLatencyMode: true,
+      liveSyncDurationCount: 3,     // better for live sports
+      liveMaxLatencyDurationCount: 5,
+      startLevel: -1, 
+      xhrSetup: (xhr, url) => {
+        if (stream.originalUrl) xhr.setRequestHeader('Referer', stream.originalUrl);
+      } 
+    });
     hlsPlayer = hls;
     hls.loadSource(stream.url);
     hls.attachMedia(video);
@@ -587,6 +609,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
     DOM.embedHost.classList.remove('active');
     DOM.playerHost.style.display = 'none';
     DOM.centerPlay.classList.remove('visible');
+    // Clear quality selector listeners
+    const qs = DOM.qualitySelect;
+    qs.onchange = null;
   }
 
   // ========== Main playback ==========
@@ -671,11 +696,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
     updateButtonsActive(currentIndex);
     DOM.stage.classList.add('tabs-visible');
   }
+
+  // FIXED: cleaner active button logic (no double-highlighting AUTO + first stream)
   function updateButtonsActive(idx) {
-    const btns = document.querySelectorAll('.source-btn');
-    btns.forEach((btn,i) => {
-      if ((i===0 && idx===0) || (i-1 === idx)) btn.classList.add('active');
-      else btn.classList.remove('active');
+    const btns = DOM.sourceBar.querySelectorAll('.source-btn');
+    btns.forEach((btn, i) => {
+      if (i === 0) { // AUTO button
+        btn.classList.toggle('active', idx === 0);
+      } else {
+        btn.classList.toggle('active', (i - 1) === idx);
+      }
     });
   }
 
@@ -779,17 +809,39 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
   DOM.stage.addEventListener('touchstart', onTouchStart);
   DOM.stage.addEventListener('touchend', onTouchEnd);
 
+  // ========== External script loader with error handling ==========
+  async function loadExternalScripts() {
+    const loadScript = src => new Promise((resolve, reject) => {
+      if (src.includes('hls') && window.Hls) return resolve();
+      if (src.includes('dash') && window.dashjs) return resolve();
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error(`Failed to load ${src}`));
+      document.head.appendChild(s);
+    });
+    try {
+      await Promise.all([
+        loadScript('https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js'),
+        loadScript('https://cdn.dashjs.org/latest/dash.all.min.js')
+      ]);
+    } catch (e) {
+      console.error(e);
+      showToast('⚠️ Player engine failed to load – some streams may not work', 5000);
+    }
+  }
+
   // ========== Initialization ==========
   (async () => {
     showLoading(true, 'Resolving streams...');
     try {
       streams = await buildStreams();
-      if (!streams.length) throw new Error('No streams');
+      if (!streams.length) {
+        showError('No Streams', 'Add ?mora=PAGE-URL1&amp;mora=PAGE-URL2 (or ?embed=...) to the browser address bar and refresh.');
+        return;
+      }
       renderSourceBar();
-      await Promise.all([
-        new Promise(r=>{ if(window.Hls) r(); else { const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js'; s.onload=r; document.head.appendChild(s); } }),
-        new Promise(r=>{ if(window.dashjs) r(); else { const s=document.createElement('script'); s.src='https://cdn.dashjs.org/latest/dash.all.min.js'; s.onload=r; document.head.appendChild(s); } })
-      ]);
+      await loadExternalScripts();
       showLoading(false);
       await playStreamByIndex(0, false);
       trackEvent('App','Player Loaded',`${streams.length} streams`);
