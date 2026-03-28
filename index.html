@@ -4,6 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>SPORTS STREAM · Intelligent Multi-Source Player</title>
+  <!-- Google Analytics (gtag) from original -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y5EVJ9NQ5B"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-Y5EVJ9NQ5B', { 'send_page_view': true, 'transport_type': 'beacon' });
+    function trackEvent(category, action, label = null, value = null, nonInteraction = false) {
+      const eventParams = { event_category: category, event_label: label, non_interaction: nonInteraction };
+      if (value !== null) eventParams.value = value;
+      gtag('event', action, eventParams);
+      console.log(`📊 GA Event: ${category} - ${action}`, { label, value });
+    }
+  </script>
   <style>
     * {
       margin: 0;
@@ -306,40 +320,27 @@
 </head>
 <body>
 <div class="player-stage" id="playerStage">
-  <!-- video container for HLS/DASH -->
   <div class="video-wrapper" id="videoContainer">
     <video id="videoElement" playsinline muted></video>
     <div class="big-play" id="bigPlayBtn">
       <svg viewBox="0 0 24 24"><polygon points="8,5 8,19 19,12" fill="white"/></svg>
     </div>
   </div>
-
-  <!-- iframe container for embed streams -->
   <div class="iframe-wrapper" id="iframeContainer">
     <iframe id="embedIframe" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="no-referrer-when-downgrade" sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation allow-top-navigation-by-user-activation"></iframe>
   </div>
-
-  <!-- server selector bar -->
   <div class="server-bar" id="serverBar"></div>
-
-  <!-- quality selector (auto/hide) -->
   <div class="quality-panel" id="qualityPanel">
     <span class="quality-label">🔘 QUALITY</span>
     <select id="qualitySelect"></select>
   </div>
-
-  <!-- toast messages -->
   <div class="toast-msg" id="toastMsg"></div>
-
-  <!-- error overlay -->
   <div class="error-overlay" id="errorOverlay">
     <div class="error-icon">⚠️</div>
     <div class="error-title" id="errorTitle">Stream Unavailable</div>
     <div class="error-message" id="errorMsg">Unable to load this source.</div>
     <button class="error-retry-btn" id="errorRetryBtn">RETRY NOW</button>
   </div>
-
-  <!-- loading indicator -->
   <div class="loading-indicator" id="loadingIndicator">
     <div class="spinner"></div>
     <div class="loading-text" id="loadingText">Loading stream...</div>
@@ -349,7 +350,13 @@
 
 <script>
   (function(){
-    // ---------- HELPERS ----------
+    // ---------- iOS Detection ----------
+    function isIOS() {
+      return /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    // ---------- URL Helpers ----------
     function getUrlParams() {
       const params = new URLSearchParams(window.location.search);
       const moraList = params.getAll('mora');
@@ -357,7 +364,6 @@
       return { moraList, embedList };
     }
 
-    // detect stream type by URL
     function detectStreamType(url) {
       const lower = url.toLowerCase();
       if (lower.includes('.m3u8') || lower.includes('m3u8')) return 'hls';
@@ -365,7 +371,6 @@
       return 'iframe';
     }
 
-    // parse stream with optional label (URL|Name)
     function parseStreamItem(rawUrl, sourceType = 'mora') {
       let url = rawUrl.trim();
       let label = '';
@@ -383,34 +388,35 @@
       return { url, type, label, original: rawUrl, sourceType };
     }
 
-    // priority: direct (hls/dash) > iframe
-    function priorityWeight(stream) {
-      if (stream.type === 'hls') return 1;
-      if (stream.type === 'dash') return 2;
-      return 10; // iframe
+    // Priority for sorting: for iOS, HLS > iframe > DASH (but DASH will be skipped later)
+    // For non-iOS: HLS > DASH > iframe
+    function priorityWeight(stream, ios) {
+      if (ios) {
+        if (stream.type === 'hls') return 1;
+        if (stream.type === 'iframe') return 2;
+        return 10; // dash on iOS = last
+      } else {
+        if (stream.type === 'hls') return 1;
+        if (stream.type === 'dash') return 2;
+        return 10;
+      }
     }
 
-    // build final stream list from URL params
     function buildStreamList() {
       const { moraList, embedList } = getUrlParams();
       let streams = [];
-      // add mora streams (direct)
-      moraList.forEach(raw => {
-        streams.push(parseStreamItem(raw, 'mora'));
-      });
-      // add embed streams
+      moraList.forEach(raw => streams.push(parseStreamItem(raw, 'mora')));
       embedList.forEach(raw => {
         const embedStream = parseStreamItem(raw, 'embed');
-        embedStream.type = 'iframe'; // force iframe type
+        embedStream.type = 'iframe';
         embedStream.label = embedStream.label || 'EMBED';
         streams.push(embedStream);
       });
-      // if no streams at all, add a demo hint (but we'll show friendly)
       if (streams.length === 0) {
-        console.warn('No streams provided via ?mora= or ?embed=');
+        console.warn('No streams provided');
       }
-      // sort by priority (direct first)
-      streams.sort((a,b) => priorityWeight(a) - priorityWeight(b));
+      const ios = isIOS();
+      streams.sort((a,b) => priorityWeight(a, ios) - priorityWeight(b, ios));
       return streams;
     }
 
@@ -438,11 +444,10 @@
 
     let retryCounter = 0;
     const MAX_RETRIES_PER_STREAM = 2;
-    let autoFailoverActive = false;
-    let firstInteractionFlag = false;    // for fullscreen on first tap
+    let firstInteractionFlag = false;
     let isFullscreenSupported = !!document.documentElement.requestFullscreen;
 
-    // helper functions
+    // Helper: Show toast
     function showToast(text, duration = 2200) {
       toastMsg.textContent = text;
       toastMsg.classList.add('show');
@@ -466,10 +471,9 @@
       errorTitleSpan.textContent = title;
       errorMsgSpan.textContent = message;
       errorOverlay.classList.add('active');
-      // if not recoverable, retry button might do fallback
+      trackEvent('Player', 'Error Overlay', title, null, false);
     }
 
-    // cleanup current player (hls/dash/iframe)
     function destroyCurrentPlayer() {
       if (hlsPlayer) {
         try { hlsPlayer.destroy(); } catch(e) {}
@@ -490,7 +494,7 @@
       bigPlayBtn.classList.remove('visible');
     }
 
-    // quality update for HLS
+    // Quality handlers
     function updateHLSQuality(levels) {
       if (!levels || levels.length === 0) return;
       qualitySelect.innerHTML = '<option value="auto">Auto (Adaptive)</option>';
@@ -537,7 +541,7 @@
       };
     }
 
-    // attempt to play HLS stream using HLS.js
+    // Playback functions
     async function playHLS(streamObj) {
       return new Promise((resolve, reject) => {
         if (!window.Hls) {
@@ -591,7 +595,6 @@
       });
     }
 
-    // play DASH using dash.js
     async function playDASH(streamObj) {
       return new Promise((resolve, reject) => {
         if (!window.dashjs) {
@@ -610,7 +613,6 @@
         player.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, () => {
           if (resolved) return;
           resolved = true;
-          // get bitrate list
           const bitrateList = player.getBitrateInfoListFor('video');
           updateDASHQuality(bitrateList);
           video.play().catch(e => reject(e));
@@ -625,7 +627,6 @@
       });
     }
 
-    // play iframe embed
     async function playIframe(streamObj) {
       return new Promise((resolve, reject) => {
         destroyCurrentPlayer();
@@ -643,18 +644,31 @@
           clearTimeout(loadTimeout);
           reject(new Error('Iframe failed to load'));
         };
-        // allow manual interaction for iframe
         bigPlayBtn.classList.remove('visible');
       });
     }
 
-    // main play logic with retry & auto-failover
     async function playStreamByIndex(index, isRetry = false) {
       if (index < 0 || index >= streams.length) {
         showErrorOverlay('No Streams', 'No valid streams available. Check URL parameters.', false);
         showLoading(false);
         return false;
       }
+
+      // iOS: if stream type is dash, skip to next
+      if (isIOS() && streams[index].type === 'dash') {
+        showToast(`📱 iPhone doesn't support DASH, skipping to next source`, 2000);
+        trackEvent('iOS', 'Skip DASH', streams[index].label, index+1);
+        const next = index + 1;
+        if (next < streams.length) {
+          return playStreamByIndex(next, false);
+        } else {
+          showErrorOverlay('Unsupported Format', 'No compatible HLS or embed stream found for iOS.', false);
+          showLoading(false);
+          return false;
+        }
+      }
+
       currentStreamIndex = index;
       const stream = streams[index];
       showLoading(true, `Starting ${stream.label}...`);
@@ -673,10 +687,9 @@
           currentPlayerType = 'iframe';
         }
         showLoading(false);
-        // show active button in UI
         updateServerButtonsActive(index);
-        retryCounter = 0; // reset retry on success
-        // for direct streams, show big play only if video paused (detect later)
+        retryCounter = 0;
+        // handle big play button for video players
         if (currentPlayerType !== 'iframe') {
           videoElement.addEventListener('play', () => bigPlayBtn.classList.remove('visible'), { once: true });
           videoElement.addEventListener('pause', () => { if (!videoElement.paused) return; bigPlayBtn.classList.add('visible'); });
@@ -686,46 +699,45 @@
           bigPlayBtn.classList.remove('visible');
         }
         showToast(`✅ ${stream.label} • LIVE`);
+        trackEvent('Stream', 'Started', stream.label, index+1);
         return true;
       } catch (err) {
         console.error(`Stream ${index} (${stream.label}) error:`, err);
         showLoading(false);
-        // retry logic
+        trackEvent('Stream', 'Error', stream.label, index+1, false);
         if (!isRetry && retryCounter < MAX_RETRIES_PER_STREAM) {
           retryCounter++;
           showToast(`⚠️ ${stream.label} failed, retry ${retryCounter}/${MAX_RETRIES_PER_STREAM}...`);
           await new Promise(r => setTimeout(r, 800));
           return playStreamByIndex(index, true);
         } else {
-          // move to next stream automatically (failover)
           const nextIndex = index + 1;
           if (nextIndex < streams.length) {
             showToast(`🔄 Switching to backup: ${streams[nextIndex].label}`, 2000);
+            trackEvent('Stream', 'Failover', `${stream.label} -> ${streams[nextIndex].label}`, nextIndex+1);
             retryCounter = 0;
             return playStreamByIndex(nextIndex, false);
           } else {
-            // all streams exhausted
             showErrorOverlay('All Streams Failed', 'No working stream found. Try refreshing or check URL.', true);
+            trackEvent('Stream', 'All Failed', 'All sources exhausted', null);
             return false;
           }
         }
       }
     }
 
-    // manual switch by index
     function switchToStream(index) {
       if (index === currentStreamIndex) {
         showToast(`Already on ${streams[index].label}`);
         return;
       }
       retryCounter = 0;
+      trackEvent('User', 'Switch Stream', streams[index].label, index+1);
       playStreamByIndex(index, false);
     }
 
-    // render server buttons (Auto + each stream)
     function renderServerButtons() {
       serverBar.innerHTML = '';
-      // "Auto" button: will select best priority stream (first in sorted list)
       const autoBtn = document.createElement('button');
       autoBtn.className = 'server-btn auto';
       autoBtn.textContent = '⚡ AUTO';
@@ -757,15 +769,13 @@
     function updateServerButtonsActive(activeIdx) {
       const btns = document.querySelectorAll('.server-btn');
       btns.forEach((btn, i) => {
-        if (i === 0 && activeIdx === 0) btn.classList.add('active'); // auto active when first stream playing
+        if (i === 0 && activeIdx === 0) btn.classList.add('active');
         else if (i-1 === activeIdx) btn.classList.add('active');
         else btn.classList.remove('active');
       });
-      // highlight auto if we are playing the best stream (index 0)
       if (activeIdx === 0 && btns[0]) btns[0].classList.add('active');
     }
 
-    // handle first interaction fullscreen (mobile & desktop)
     function setupFirstFullscreen() {
       const stage = document.getElementById('playerStage');
       const handleFirstTap = () => {
@@ -776,7 +786,6 @@
           showToast('🎬 Fullscreen enabled', 1500);
           if (fullscreenHint) fullscreenHint.style.opacity = '0';
         }
-        // remove listener after first interaction
         stage.removeEventListener('click', handleFirstTap);
         stage.removeEventListener('touchstart', handleFirstTap);
       };
@@ -787,32 +796,33 @@
       }, 1000);
     }
 
-    // big play button handler for direct video
     bigPlayBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (videoElement && currentPlayerType !== 'iframe') {
         if (videoElement.paused) {
           videoElement.play().catch(() => showToast('Playback blocked'));
+          trackEvent('User', 'Big Play Click', 'Resume');
         } else {
           videoElement.pause();
+          trackEvent('User', 'Big Play Click', 'Pause');
         }
       }
     });
 
-    // error retry button handler: retry current stream or fallback
     document.getElementById('errorRetryBtn').addEventListener('click', () => {
       hideErrorOverlay();
       if (currentStreamIndex >= 0 && streams[currentStreamIndex]) {
         retryCounter = 0;
         playStreamByIndex(currentStreamIndex, false);
+        trackEvent('User', 'Error Retry', streams[currentStreamIndex].label);
       } else if (streams.length) {
         playStreamByIndex(0, false);
+        trackEvent('User', 'Error Retry', 'Fallback to first');
       } else {
         showToast('No streams configured');
       }
     });
 
-    // Load external libraries (HLS.js, dash.js) dynamically
     function loadDependencies() {
       const scripts = [
         { src: 'https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js', key: 'Hls' },
@@ -831,24 +841,22 @@
       return Promise.all(promises);
     }
 
-    // Initialization
     async function init() {
       streams = buildStreamList();
       if (streams.length === 0) {
         serverBar.innerHTML = '<div style="color:#aaa; padding: 6px;">⚠️ No streams provided. Use ?mora=URL or ?embed=URL</div>';
         showErrorOverlay('No Streams', 'Add ?mora=stream.m3u8 or ?embed=page.html to URL', false);
         showLoading(false);
+        trackEvent('App', 'No Streams', 'Configuration error');
         return;
       }
       renderServerButtons();
       await loadDependencies().catch(err => console.warn("Lib load err", err));
-      // start playing best stream (index 0)
       playStreamByIndex(0, false);
       setupFirstFullscreen();
-      // If no embed/iframe, show hint
+      trackEvent('App', 'Player Loaded', `Streams: ${streams.length}`, streams.length);
     }
 
-    // expose for debugging (optional)
     window.__player = { switchToStream, streams };
     init();
   })();
