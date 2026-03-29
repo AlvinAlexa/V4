@@ -993,7 +993,7 @@ async function bulkPost() {
       if (!res.ok) { failed++; continue; }
       postedIds.add(id);
       done++;
-      await new Promise(r => setTimeout(r, 600)); // rate limit
+      await new Promise(r => setTimeout(r, 2000)); // rate limit
     } catch { failed++; }
   }
   localStorage.setItem('s803_posted', JSON.stringify([...postedIds]));
