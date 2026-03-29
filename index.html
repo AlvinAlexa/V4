@@ -608,7 +608,21 @@ transition: all 0.15s;
 // ─── CONFIG ────────────────────────────────────────────────────
 const CLIENT_ID = ''; // ← Paste your Google OAuth Client ID here
 const SCOPES = 'https://www.googleapis.com/auth/blogger';
-const CORS_PROXY = 'https://api.allorigins.win/get?url=';
+const CORS_PROXIES = [
+  async (url) => {
+    const r = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(url));
+    const d = await r.json(); return d.contents;
+  },
+  async (url) => {
+    const r = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+    return await r.text();
+  },
+  async (url) => {
+    const r = await fetch('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url));
+    return await r.text();
+  }
+];
+
 const SOURCE_URL = 'https://ddkanqu.com/';
 
 // ─── TEAM NAME TRANSLATIONS ─────────────────────────────────────
@@ -696,11 +710,15 @@ async function fetchEvents() {
   setStatus('loading', 'Fetching events from ddkanqu.com...');
 
   try {
-    const proxyUrl = CORS_PROXY + encodeURIComponent(SOURCE_URL);
-    const res = await fetch(proxyUrl);
-    if (!res.ok) throw new Error('Proxy fetch failed');
-    const data = await res.json();
-    const html = data.contents;
+let html = null;
+for (const proxy of CORS_PROXIES) {
+  try {
+    html = await proxy(SOURCE_URL);
+    if (html && html.length > 500) break;
+  } catch(e) { continue; }
+}
+if (!html) throw new Error('All proxies failed. Try again in a moment.');
+
 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
