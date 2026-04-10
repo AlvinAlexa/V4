@@ -798,6 +798,7 @@ let editingPostId=null,editingEventKey=null;
 let schedTimer=null,countdownTimer=null,schedNextFire=null;
 let tbDebounce,composDebounce;
 let currentComposeEv=null;
+let currentComposeRace=null; // stores full race object when composing a race post
 let tbGenCount=0,composeGenCount=0;
 let externalStreamsMap={},ddkanquCache={},ddkanquMappings={},ddkanquHomeMap={};
 let dsArticleCache={};
@@ -1064,11 +1065,16 @@ async function generateWithClaude(){
 }
 function buildArticleFallback(title,ev){
   const player=CFG.playerBase;
-  if(!ev){const p=parseTitle(title);const h=p?.home||'Home',a=p?.away||'Away';return `${h} vs ${a} is scheduled soon. Watch FREE on Sports 803: ${player}`;}
-  if(ev.type==='race'){const ts=ev.startTime?ev.startTime.toLocaleString():'this weekend';return `${ev.name} — ${ev.league.name}.\nDate: ${ts}\n\nWatch FREE: ${player}`;}
+  if(!ev){
+    const p=parseTitle(title);
+    if(p){const h=p.home,a=p.away;return `${h} vs ${a} is scheduled soon.\n\nWatch FREE on Sports 803: ${player}`;}
+    // Race/event with no ev context
+    return `<h2>${title}</h2>\n<p>${title} — watch the full race replay free on Sports 803.</p>\n<p>📺 Watch FREE on Sports 803: <a href="${player}">${player}</a></p>`;
+  }
+  if(ev.type==='race'){const ts=ev.startTime?ev.startTime.toLocaleString():'this weekend';return `<h2>${ev.name}</h2>\n<p>${ev.name} — ${ev.league.name}.</p>\n<p>Date: ${ts}</p>\n<p>📺 Watch FREE on Sports 803: <a href="${player}">${player}</a></p>`;}
   const h=ev.home.name,a=ev.away.name,lg=ev.league.name;
   const ts=ev.startTime?ev.startTime.toLocaleString():'today';
-  return `${h} vs ${a} — ${lg}.\nKickoff: ${ts}\n\nWatch FREE on Sports 803: ${player}`;
+  return `<h2>${h} vs ${a}</h2>\n<p>${h} vs ${a} — ${lg}.</p>\n<p>Kickoff: ${ts}</p>\n<p>📺 Watch FREE on Sports 803: <a href="${player}">${player}</a></p>`;
 }
 async function buildArticleWithClaude(title,ev,isHighlights=false){
   const cacheKey=(ev?evKey(ev):title)+(isHighlights?'|hl':'');if(dsArticleCache[cacheKey])return dsArticleCache[cacheKey];
@@ -1509,13 +1515,30 @@ async function postToBlogger(){
   const t=v('post-title'),b=document.getElementById('post-body').value.trim(),st=v('post-status');
   const labels=v('post-labels').split(',').map(s=>s.trim()).filter(Boolean);
   if(!t||!b){toast('Title and body required','e');return;}
+
+  // Thumbnail: use existing URL or upload the canvas
   let thumbUrl=v('compose-thumb-url');
   if(!thumbUrl){const cv=document.getElementById('compose-canvas');if(cv&&cv.width>0){thumbUrl=await uploadCanvas(cv);if(thumbUrl)set('compose-thumb-url',thumbUrl);}}
-  const html=(thumbUrl?'<div><img src="'+thumbUrl+'" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="'+t+'"></div>\n':'')+b.replace(/\n/g,'<br>');
+
+  const thumbHtml=thumbUrl?'<div><img src="'+thumbUrl+'" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="'+t+'"></div>\n':'';
+
+  // For race posts: append source links + player iframe from currentComposeRace
+  let raceExtra='';
+  if(currentComposeRace){
+    const race=currentComposeRace;
+    if(race.sources.length){
+      raceExtra+='\n\n<div style="margin:14px 0;padding:12px 16px;background:#0e1320;border:1px solid #1e2d45;border-radius:10px"><p style="color:#4cc9f0;font-weight:700;margin-bottom:8px">📹 Watch Full Race — All Parts:</p>'+
+        race.sources.map((s,i)=>`<p><a href="${s.url}" style="color:#e63946;text-decoration:none" target="_blank">▶ ${s.label||'Part '+(i+1)}</a></p>`).join('')+
+        '</div>';
+      raceExtra+='\n\n<div style="margin:18px 0;position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:10px"><iframe loading="lazy" src="'+race.playerUrl+'" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;border-radius:10px" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>';
+    }
+  }
+
+  const html=thumbHtml+b.replace(/\n/g,'<br>')+raceExtra;
   const schedDtVal=document.getElementById('post-schedule-dt')?.value;
   let publishDate=null;if(schedDtVal&&st==='LIVE')publishDate=new Date(schedDtVal).toISOString();
   if(editingPostId){await updateExistingPost(currentComposeEv,t,html,st,labels,publishDate);}
-  else{const post=await postRaw(t,html,st,labels,publishDate);if(post){if(currentComposeEv)setLog(currentComposeEv,{postId:post.id,postUrl:post.url,status:st,title:t,league:currentComposeEv.league?.name});addRecentPost(t,post.url,st);toast('Published ✓','s');}}
+  else{const post=await postRaw(t,html,st,labels,publishDate);if(post){if(currentComposeEv)setLog(currentComposeEv,{postId:post.id,postUrl:post.url,status:st,title:t,league:currentComposeEv.league?.name});addRecentPost(t,post.url,st);currentComposeRace=null;toast('Published ✓','s');}}
 }
 async function postRaw(title,html,status,labels,publishDate=null){
   if(!CFG.blogId||!accessToken)return null;
@@ -1534,7 +1557,7 @@ async function updateExistingPost(ev,title,html,status,labels,publishDate=null){
   try{const res=await fetch(url,{method:'PUT',headers:{'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'},body:JSON.stringify(body)});if(!res.ok)throw new Error(res.status);const post=await res.json();if(ev)setLog(ev,{postId:post.id,postUrl:post.url,status,title});addRecentPost(title,post.url,status);clearEditMode();toast('Post updated ✓','s');}catch(e){toast('Update failed: '+e.message,'e');}
 }
 function setEditMode(postId,eventKey,postUrl){editingPostId=postId;editingEventKey=eventKey;const btn=document.getElementById('compose-publish-btn');if(btn){btn.textContent='🔄 Update Post';btn.className='btn-gold';}const banner=document.getElementById('edit-mode-banner');if(banner)banner.style.display='flex';const link=document.getElementById('edit-mode-banner-link');if(link&&postUrl&&postUrl!=='#')link.href=postUrl;}
-function clearEditMode(){editingPostId=null;editingEventKey=null;const btn=document.getElementById('compose-publish-btn');if(btn){btn.textContent='📤 Publish';btn.className='btn-red';}const banner=document.getElementById('edit-mode-banner');if(banner)banner.style.display='none';}
+function clearEditMode(){editingPostId=null;editingEventKey=null;currentComposeRace=null;const btn=document.getElementById('compose-publish-btn');if(btn){btn.textContent='📤 Publish';btn.className='btn-red';}const banner=document.getElementById('edit-mode-banner');if(banner)banner.style.display='none';}
 function addRecentPost(title,url,status){const list=document.getElementById('recent-posts');if(list.textContent.includes('No posts'))list.innerHTML='';const d=document.createElement('div');d.style.cssText='padding:6px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px';d.innerHTML='<span class="post-badge '+(status||'').toLowerCase()+'">'+status+'</span><span style="flex:1;font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+title+'</span>'+(url?'<a href="'+url+'" target="_blank" style="font-size:.68rem;color:var(--blue)">View</a>':'');list.prepend(d);updateStats();}
 function previewPost(){document.getElementById('preview-title').textContent=v('post-title');document.getElementById('preview-body').innerHTML=document.getElementById('post-body').value.replace(/\n/g,'<br>');openModal('modal-preview');}
 
@@ -1965,31 +1988,34 @@ function copyRacePlayerUrl(id){
 async function genRacePost(id){
   const race=findRace(id);if(!race)return;
   clearEditMode();
+  currentComposeEv=null;
+  currentComposeRace=race; // store so postToBlogger can append the player iframe
+
   const postTitle=race.title+' – Full Race Replay | Sports 803';
   set('post-title',postTitle);
-  const playerIframe=race.sources.length
-    ?`<div style="margin:18px 0;position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:10px"><iframe loading="lazy" src="${race.playerUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;border-radius:10px" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`
-    :'';
-  const thumbBlock=race.previewImg
-    ?`<div><img src="${race.previewImg}" alt="${race.title}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px"></div>\n`
-    :'';
+
   toast('Generating article…','i');
+  // Build article body (Claude AI or fallback) — NO thumb block, NO iframe here;
+  // postToBlogger handles the thumbnail from compose-thumb-url,
+  // and will append the race player iframe from currentComposeRace.
   const body=await buildArticleWithClaude(race.title,null,false);
-  document.getElementById('post-body').value=thumbBlock+body+(playerIframe?'\n\n'+playerIframe:'');
+  document.getElementById('post-body').value=body;
+
+  // Set thumbnail URL so postToBlogger prepends it as an <img> tag
   set('compose-thumb-url',race.previewImg||'');
-  if(race.previewImg){
-    const cv=document.getElementById('compose-canvas');
-    setCanvasSize(cv,'1920','16:9');
-    await drawRaceThumbnail(cv,{
-      name:race.title,
-      league:race.sportSlug?race.sportSlug.toUpperCase():'Full Race',
-      datetime:race.dateStr||'',
-      venue:'',bg1:'#0a0e1a',bg2:'#1a0a00',
-      bannerUrl:race.previewImg
-    });
-  }
+
+  // Draw the race thumbnail on the canvas (visual preview, also used for upload if no previewImg URL)
+  const cv=document.getElementById('compose-canvas');
+  setCanvasSize(cv,'1920','16:9');
+  await drawRaceThumbnail(cv,{
+    name:race.title,
+    league:race.sportSlug?race.sportSlug.toUpperCase():'Full Race',
+    datetime:race.dateStr||'',
+    venue:'',bg1:'#0a0e1a',bg2:'#1a0a00',
+    bannerUrl:race.previewImg||''
+  });
+
   document.getElementById('post-labels').value=['sports 803','full race replay',race.sportSlug,'motorsport'].filter(Boolean).join(', ');
-  currentComposeEv=null;
   updateSEO();
   showPage('compose');
   toast('Race post ready — click Publish ✓','s');
@@ -2000,15 +2026,53 @@ async function quickPostRace(id){
   if(!CFG.blogId){toast('Add your Blog ID in Settings','e');return;}
   const race=findRace(id);if(!race)return;
   toast('Posting race to Blogger…','i');
+
   const postTitle=race.title+' – Full Race Replay | Sports 803';
-  const thumbBlock=race.previewImg
-    ?`<div><img src="${race.previewImg}" alt="${race.title}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px"></div>\n`
-    :'';
+
+  // Build article via Claude (or fallback with proper race context)
+  let articleBody=await buildArticleWithClaude(race.title,null,false);
+
+  // Build player iframe with ALL fetched sources
   const playerIframe=race.sources.length
     ?`<div style="margin:18px 0;position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:10px"><iframe loading="lazy" src="${race.playerUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;border-radius:10px" allowfullscreen allow="autoplay; encrypted-media"></iframe></div>`
     :'';
-  const body=await buildArticleWithClaude(race.title,null,false);
-  const html=thumbBlock+body.replace(/\n/g,'<br>')+(playerIframe?'\n\n'+playerIframe:'');
+
+  // Build individual source links section for extra discoverability
+  const sourceLinksHtml=race.sources.length
+    ?`<div style="margin:14px 0;padding:12px 16px;background:#0e1320;border:1px solid #1e2d45;border-radius:10px"><p style="color:#4cc9f0;font-weight:700;margin-bottom:8px">📹 Watch Full Race — All Parts:</p>`+
+      race.sources.map((s,i)=>`<p><a href="${s.url}" style="color:#e63946;text-decoration:none" target="_blank">▶ ${s.label||'Part '+(i+1)}</a></p>`).join('')+
+      `</div>`
+    :'';
+
+  // Thumbnail: try to upload race.previewImg or draw canvas
+  let thumbHtml='';
+  if(race.previewImg){
+    if(CFG.imgbbKey){
+      try{
+        const resp=await fetch(race.previewImg);const blob=await resp.blob();
+        const fd=new FormData();fd.append('key',CFG.imgbbKey);
+        const reader=new FileReader();const b64=await new Promise(res=>{reader.onload=()=>res(reader.result.split(',')[1]);reader.readAsDataURL(blob);});
+        fd.append('image',b64);
+        const r=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:fd});
+        const json=await r.json();
+        if(json.success)thumbHtml=`<div><img src="${json.data.url}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="${postTitle}"></div>\n`;
+      }catch(e){}
+    }
+    if(!thumbHtml)thumbHtml=`<div><img src="${race.previewImg}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="${postTitle}"></div>\n`;
+  }else{
+    // Draw canvas thumbnail as fallback
+    try{
+      const cv=document.createElement('canvas');setCanvasSize(cv,'1920','16:9');
+      await drawRaceThumbnail(cv,{name:race.title,league:race.sportSlug?race.sportSlug.toUpperCase():'Full Race',datetime:race.dateStr||'',venue:'',bg1:'#0a0e1a',bg2:'#1a0a00',bannerUrl:''});
+      if(CFG.imgbbKey){const fd=new FormData();fd.append('key',CFG.imgbbKey);fd.append('image',cv.toDataURL('image/jpeg',.9).split(',')[1]);const r=await fetch('https://api.imgbb.com/1/upload',{method:'POST',body:fd});const json=await r.json();if(json.success)thumbHtml=`<div><img src="${json.data.url}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="${postTitle}"></div>\n`;}
+      if(!thumbHtml)thumbHtml=`<div><img src="${cv.toDataURL('image/jpeg',.85)}" style="max-width:100%;height:auto;border-radius:10px;margin-bottom:18px" alt="${postTitle}"></div>\n`;
+    }catch(e){}
+  }
+
+  const html=thumbHtml+articleBody.replace(/\n/g,'<br>')+
+    (sourceLinksHtml?'\n\n'+sourceLinksHtml:'')+
+    (playerIframe?'\n\n'+playerIframe:'');
+
   const labels=['sports 803','full race replay',race.sportSlug,'motorsport'].filter(Boolean);
   const post=await postRaw(postTitle,html,CFG.schedStatus||'DRAFT',labels);
   if(post){
