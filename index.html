@@ -803,6 +803,7 @@ let CFG={
   deepseekKey:'',deepseekModel:'claude-sonnet-4-20250514',deepseekTone:'',deepseekLength:'medium',
   ytApiKey:''
 };
+let ddkanquHomeMap = {};   // for DDKanqu homepage cache
 let LOGO_OVERRIDES={},LOGO_CACHE={};
 let allEvents=[],channels=[],postLog={};
 let accessToken=null,editingCH=null;
@@ -1771,7 +1772,7 @@ function parseDDKanquDOM(html, baseUrl){
     // ── HLS/stream extraction via comment node traversal ──
     const hlsUrls = [];
     // Use TreeWalker with SHOW_COMMENT to traverse all comment nodes inside the <a>
-    const walker = document.createTreeWalker(link, NodeFilter.SHOW_COMMENT);
+const walker = doc.createTreeWalker(link, NodeFilter.SHOW_COMMENT);
     let node;
     while((node = walker.nextNode())){
       const text = node.nodeValue || '';
@@ -2218,89 +2219,7 @@ async function scrapeFullRacesHome(){
   return race;
 }
 
-    document.getElementById('fr-scrape-log').textContent = 'Fetching: '+url;
-  }
-  const html = await fetchFRPage(url);
-  if(!html){
-    frLog('✗ Fetch failed: '+url);
-    return null;
-  }
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  // ── Title ──
-  const ogTitle = doc.querySelector('meta[property="og:title"]');
-  const title = (ogTitle ? ogTitle.getAttribute('content') : '') || doc.title || url.split('/').pop().replace(/-/g,' ');
-  // ── Preview Image ──
-  let previewImg = '';
-  const fullImgEl = doc.querySelector('.full_img img, .fullstory .full_img img');
-  if(fullImgEl){
-    const rawSrc = fullImgEl.getAttribute('src') || '';
-    try{ previewImg = new URL(rawSrc, url).href; }catch(e){ previewImg = rawSrc; }
-  }
-  if(!previewImg){
-    const og = doc.querySelector('meta[property="og:image"]');
-    if(og) previewImg = og.getAttribute('content') || '';
-  }
-  // ── Story container ──
-  const story = doc.querySelector('div.fullstory.block_elem') ||
-                doc.querySelector('.fullstory') ||
-                doc.querySelector('.entry-content') ||
-                doc.body;
-  // ── Video Sources (ORDERED as they appear on page) ──
-  const sources = [];
-  // Collect all su-button links AND iframes together, sorted by DOM order
-  const allNodes = story ? story.querySelectorAll('a.su-button, iframe') : [];
-  for(const node of allNodes){
-    if(node.tagName === 'A'){
-      // Dailymotion / direct part links
-      const href = node.getAttribute('href') || '';
-      if(href && href.startsWith('http')){
-        const label = node.textContent.trim() || 'Part '+(sources.length+1);
-        sources.push({url: href, label});
-        frLog('  [su-button] '+label+': '+href);
-      }
-    } else if(node.tagName === 'IFRAME'){
-      // Embedded players (ok.ru, voe.sx, etc.)
-      const src = node.getAttribute('src') || node.getAttribute('data-src') || '';
-      if(src && src.startsWith('http')){
-        const label = 'Embed '+(sources.length+1);
-        sources.push({url: src, label});
-        frLog('  [iframe] '+label+': '+src);
-      }
-    }
-  }
-  // ── Build player URL ──
-  // URL-encode each source and join as ?embed=…&embed=…
-  const playerBase = (CFG.mediaPlayerBase || 'https://alvinalexa.github.io/media-player/').replace(/\/$/,'');
-  const playerUrl = sources.length
-    ? playerBase + '?' + sources.map(s => 'embed='+encodeURIComponent(s.url)).join('&')
-    : playerBase;
-  // ── Extract date from title or URL ──
-  const dateMatch = (title+' '+url).match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}[,\s]+\d{4}/i);
-  const dateStr = dateMatch ? dateMatch[0] : '';
-  // ── Extract sport/series from URL/title ──
-  const sportMatch = url.match(/fullraces\.com\/([^/]+)/);
-  const sportSlug = sportMatch ? sportMatch[1].split('-')[0] : '';
-  const race = {
-    id: 'fr_'+btoa(url).replace(/[^a-z0-9]/gi,'').substring(0,12),
-    url, title, previewImg, sources, playerUrl, dateStr, sportSlug,
-    savedHL: null, // for Task 4 highlights
-  };
-  // Merge with existing saved HL
-  const existing = fullRacesData.find(r => r.url === url);
-  if(existing?.savedHL) race.savedHL = existing.savedHL;
-  if(!silent){
-    frLog('\n✓ Scraped: "'+title+'" — '+sources.length+' source(s)');
-    toast('"'+title.substring(0,40)+'" scraped ✓','s');
-    // Add/update in fullRacesData
-    const idx = fullRacesData.findIndex(r => r.url === url);
-    if(idx > -1) fullRacesData[idx] = race;
-    else fullRacesData.unshift(race);
-    saveAll();
-    renderFullRaces(fullRacesData);
-  }
-  return race;
-}
+  
 
 /**
  * Render the Full Races grid with race cards.
