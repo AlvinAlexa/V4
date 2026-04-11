@@ -197,14 +197,8 @@ transition:var(--transition);position:relative;overflow:hidden
 .ec-time{font-size:.62rem;color:var(--muted2);text-align:center;font-family:var(--cond)}
 .ec-actions{display:flex;gap:4px;flex-wrap:wrap}
 .ec-actions button{flex:1;font-size:.66rem;padding:5px 4px;font-family:var(--cond);min-width:0}
-.logo-chip{width:40px;height:40px;background:var(--bg4);border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--cond);font-weight:900;font-size:.85rem;color:var(--muted2);overflow:hidden;flex-shrink:0;transition:var(--transition)}
-.logo-chip:hover{border-color:var(--border2)}
+.logo-chip{width:38px;height:38px;background:var(--bg4);border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--cond);font-weight:900;font-size:.8rem;color:var(--muted2);overflow:hidden;flex-shrink:0}
 .logo-chip img{width:100%;height:100%;object-fit:contain;display:block}
-.logo-chip-lg{width:52px;height:52px;border-radius:10px;font-size:1.1rem}
-/* Event card logo ring — status indicator */
-.ec-logo-wrap{position:relative;display:flex;align-items:center;justify-content:center}
-.ec-logo-wrap.live::after{content:'';position:absolute;inset:-3px;border-radius:11px;border:2px solid var(--red);animation:blink 1.5s infinite}
-.ec-logo-wrap.final::after{content:'';position:absolute;inset:-3px;border-radius:11px;border:2px solid var(--green)}
 /* ═══ BADGES & TAGS ═══ */
 .badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;font-size:.6rem;font-family:var(--cond);font-weight:800;letter-spacing:.3px}
 .badge-red{background:var(--red-glow);color:var(--red);border:1px solid rgba(230,57,70,.25)}
@@ -723,8 +717,7 @@ RESPONSIVE BREAKPOINTS
   <!-- Events count + pagination info -->
   <div class="flex-between" style="margin-bottom:12px">
     <div style="font-size:.72rem;color:var(--muted2)" id="events-count-label">No events loaded</div>
-    <div style="display:flex;gap:12px;align-items:center">
-      <span id="logo-res-status" style="font-size:.65rem;color:var(--muted);font-family:var(--mono)"></span>
+    <div style="display:flex;gap:8px">
       <select id="events-sort" style="width:auto;font-size:.72rem;padding:5px 24px 5px 8px" onchange="sortEvents()">
         <option value="time">Sort: Time</option>
         <option value="league">Sort: League</option>
@@ -2253,12 +2246,7 @@ function clearComposeDraft(){
 function copyArticleHTML(){
   navigator.clipboard?.writeText(v('compose-article')).then(()=>toast('HTML copied','s')).catch(()=>toast('Copy failed','e'));
 }
-function onTeamInput(){
-  const home=v('compose-home'),away=v('compose-away');
-  if(home&&el('compose-home-chip'))logoChipImg(home,'compose-home-chip');
-  if(away&&el('compose-away-chip'))logoChipImg(away,'compose-away-chip');
-  debounce(schedTBThumb,400)();autosaveCompose();
-}
+function onTeamInput(){debounce(schedTBThumb,400)();autosaveCompose();}
 
 // ═══════════════════════════════════════════════════
 // SECTION 10 — EVENTS MODULE
@@ -2305,9 +2293,7 @@ async function fetchAllEvents(){
   }
   eventsData=results;filteredEvents=results;currentEventsPage=1;
   renderLeagueFilterPills();renderEventsGrid();updateEventsBadges();
-  toast(`Fetched ${results.length} events — resolving logos…`,'i');
-  // Batch-enrich logos in background, then re-render
-  enrichEventLogos(results).then(()=>toast(`Logo resolution complete ✓`,'s'));
+  toast(`Fetched ${results.length} events`,'s');
   if(btn){btn.disabled=false;btn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Fetch All';}
 }
 async function fetchLeague(lg){
@@ -2354,36 +2340,23 @@ function renderEventCard(ev){
   const statusClass=isLive?'live':isFinal?'final':'sched';
   const homeScore=isLive||isFinal?home?.score:'';
   const awayScore=isLive||isFinal?away?.score:'';
-  const vsText=homeScore!==undefined&&homeScore!==''&&awayScore!==undefined&&awayScore!==''?`${homeScore} – ${awayScore}`:'VS';
+  const vsText=homeScore!==undefined&&awayScore!==undefined?`${homeScore} – ${awayScore}`:'VS';
   const timeStr=isLive?'● LIVE':(isFinal?'Full Time':fmtTime(ev.date));
   const leagueColor=LEAGUE_COLORS[ev._league]||'var(--blue)';
   const posted=postLog.some(p=>p.title&&(home?.team?.displayName&&p.title.includes(home.team.displayName||''))||(away?.team?.displayName&&p.title.includes(away?.team?.displayName||'')));
-  // Logo chips — wsrv proxy + onerror fallback (same as 1.html)
-  const WSRV='https://wsrv.nl/?url=';
-  const hLogo=home?.team?.logos?.[0]?.href||LOGO_CACHE[(home?.team?.displayName||'').toLowerCase()]?.url||'';
-  const aLogo=away?.team?.logos?.[0]?.href||LOGO_CACHE[(away?.team?.displayName||'').toLowerCase()]?.url||'';
-  const hAbbr=escHtml((home?.team?.abbreviation||home?.team?.displayName||'?').slice(0,3));
-  const aAbbr=escHtml((away?.team?.abbreviation||away?.team?.displayName||'?').slice(0,3));
-  const ringClass=isLive?'live':isFinal?'final':'';
-  const hChip=hLogo
-    ?`<div class="logo-chip ec-logo-wrap${ringClass?' '+ringClass:''}"><img src="${WSRV}${encodeURIComponent(hLogo)}&w=80&h=80&fit=contain&n=-1&we" onerror="this.style.display='none'" alt="${hAbbr}" style="width:100%;height:100%;object-fit:contain"></div>`
-    :`<div class="logo-chip ec-logo-wrap${ringClass?' '+ringClass:''}" id="echip-${ev.id}-h">${hAbbr}</div>`;
-  const aChip=aLogo
-    ?`<div class="logo-chip ec-logo-wrap${ringClass?' '+ringClass:''}"><img src="${WSRV}${encodeURIComponent(aLogo)}&w=80&h=80&fit=contain&n=-1&we" onerror="this.style.display='none'" alt="${aAbbr}" style="width:100%;height:100%;object-fit:contain"></div>`
-    :`<div class="logo-chip ec-logo-wrap${ringClass?' '+ringClass:''}" id="echip-${ev.id}-a">${aAbbr}</div>`;
-  return`<div class="event-card${posted?' posted':''}${isLive?' card-accent-red':''}">
+  return`<div class="event-card${posted?' posted':''}">
     <div class="ec-top">
-      <span class="ec-league" style="color:${leagueColor}">${escHtml(ev._leagueName||ev._league)}</span>
+      <span class="ec-league" style="color:${leagueColor}">${ev._leagueName||ev._league}</span>
       <span class="ec-status ${statusClass}">${statusLabel}</span>
     </div>
     <div class="ec-match">
       <div class="ec-team">
-        ${hChip}
+        <div class="logo-chip" id="echip-${ev.id}-h">${(home?.team?.abbreviation||'?').slice(0,3)}</div>
         <div class="ec-team-name">${escHtml(home?.team?.shortDisplayName||home?.team?.displayName||'TBD')}</div>
       </div>
       <div class="ec-vs">${escHtml(vsText)}</div>
       <div class="ec-team">
-        ${aChip}
+        <div class="logo-chip" id="echip-${ev.id}-a">${(away?.team?.abbreviation||'?').slice(0,3)}</div>
         <div class="ec-team-name">${escHtml(away?.team?.shortDisplayName||away?.team?.displayName||'TBD')}</div>
       </div>
     </div>
@@ -2457,99 +2430,65 @@ function renderPagination(containerId,total,current,perPage,callback){
 }
 
 // ═══════════════════════════════════════════════════
-// SECTION 11 — THUMBNAIL MODULE (v9 — upgraded canvas engine)
+// SECTION 11 — THUMBNAIL MODULE
 // ═══════════════════════════════════════════════════
-const LEAGUE_THUMB_COLORS={ucl:['#0a0f1e','#1a0060'],epl:['#3d0066','#1a0040'],laliga:['#b8860b','#4a1800'],seriea:['#00134d','#2d0066'],bundesliga:['#1a0000','#3d0000'],nba:['#1a0800','#3d1500'],nfl:['#001a00','#003d00'],nhl:['#00001a','#00003d'],f1:['#0a0e1a','#1a0a00'],motogp:['#0d0d1a','#1a001a'],nascar:['#0a0000','#2a0800']};
+const LEAGUE_THUMB_COLORS={ucl:['#0a0f1e','#1a0060'],epl:['#3d0066','#1a0040'],laliga:['#b8860b','#4a1800'],seriea:['#00134d','#2d0066'],bundesliga:['#1a0000','#3d0000'],nba:['#1a0800','#3d1500'],nfl:['#001a00','#003d00'],nhl:['#00001a','#00003d'],f1:['#1a0000','#3d0000'],motogp:['#0d0d1a','#1a001a']};
 function getThumbColors(league){return LEAGUE_THUMB_COLORS[league]||['#0d1b2a','#1a0020'];}
-function setCanvasSize(cv,qual,aspect){const ratios={'16:9':.5625,'1:1':1,'9:16':1.778};const w=parseInt(qual)||1280;cv.width=aspect==='9:16'?Math.round(w*.5625):w;cv.height=Math.round(cv.width*(ratios[aspect]||.5625));}
-// ── Canvas helpers ──
-function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
-function wrapText(ctx,text,cx,y,maxW,fSize){if(!text)return;const words=text.split(' ');let line='',lines=[];for(const w of words){const t=line?line+' '+w:w;if(ctx.measureText(t).width>maxW&&line){lines.push(line);line=w;}else line=t;}lines.push(line);lines.slice(0,2).forEach((l,i)=>ctx.fillText(l,cx,y+i*(fSize+5)));}
-function drawBrandBadge(ctx,W,H,sc,brandName){
-  const name=(brandName||CFG.brandName||'Sports 803').toUpperCase();
-  const pad=Math.round(12*sc),bh=Math.round(28*sc);
-  ctx.save();ctx.font='800 '+Math.round(12*sc)+'px "Barlow Condensed",sans-serif';
-  const bw=ctx.measureText(name).width+Math.round(30*sc);
-  const x=W-bw-pad,y=pad;
-  ctx.globalAlpha=.9;ctx.fillStyle='rgba(0,0,0,.85)';roundRect(ctx,x,y,bw,bh,4);ctx.fill();
-  ctx.globalAlpha=1;ctx.fillStyle='#e63946';ctx.beginPath();ctx.arc(x+Math.round(10*sc),y+bh/2,Math.round(4*sc),0,Math.PI*2);ctx.fill();
-  ctx.shadowColor='#e63946';ctx.shadowBlur=Math.round(8*sc);ctx.fill();ctx.shadowBlur=0;
-  ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(name,x+Math.round(20*sc),y+bh/2);ctx.restore();
+function setCanvasSize(cv,qual,aspect){
+  const q=parseInt(qual)||1280;
+  const ratios={'16:9':[16,9],'1:1':[1,1],'9:16':[9,16]};
+  const [w,h]=ratios[aspect]||[16,9];
+  cv.width=q;cv.height=Math.round(q*h/w);
 }
-// ── Match thumbnail (split-color bg, circular logo clips, glowing VS badge, CTA stripe) ──
-async function drawMatchThumbnail(cv,opts){
-  const{home='',away='',hLogo='',aLogo='',homeLogo='',awayLogo='',league='',datetime='',dt='',bg1='#0d1b2a',bg2='#1a0020',mode='preview',score=''}=opts;
-  const HL=hLogo||homeLogo,AL=aLogo||awayLogo,DT=datetime||dt;
-  const W=cv.width,H=cv.height,cx=W/2,cy=H/2,sc=W/800;
+async function drawThumbClassic(cv,opts){
   const ctx=cv.getContext('2d');
-  const[hImg,aImg]=await Promise.all([loadImgWithFallback(HL,home),loadImgWithFallback(AL,away)]);
-  ctx.clearRect(0,0,W,H);
-  // Split background
-  ctx.fillStyle=bg1;ctx.fillRect(0,0,cx+8*sc,H);
-  ctx.fillStyle=bg2;ctx.fillRect(cx-8*sc,0,W,H);
-  // Blend seam
-  const blend=ctx.createLinearGradient(cx-70*sc,0,cx+70*sc,0);blend.addColorStop(0,bg1);blend.addColorStop(.5,'rgba(0,0,0,.65)');blend.addColorStop(1,bg2);ctx.fillStyle=blend;ctx.fillRect(cx-70*sc,0,140*sc,H);
-  // Vignette
-  const vig=ctx.createRadialGradient(cx,cy,H*.04,cx,cy,H*.9);vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.65)');ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
-  // League badge (top-center pill)
-  if(league){const fs=Math.round(13*sc);ctx.font='700 '+fs+'px "Barlow Condensed",sans-serif';const pw=ctx.measureText(league).width+24*sc,ph=fs+14*sc;ctx.save();ctx.globalAlpha=.9;ctx.fillStyle='#080c14';roundRect(ctx,cx-pw/2,Math.round(16*sc),pw,ph,ph/2);ctx.fill();ctx.globalAlpha=1;ctx.fillStyle='#e2e8f0';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(league,cx,16*sc+ph/2);ctx.restore();}
-  // Circular logo clips
-  const R=Math.round(105*sc),hcx=Math.round(W*.255),acx=Math.round(W*.745),lcy=Math.round(H*.42);
-  for(const[img,lx,teamName]of[[hImg,hcx,home],[aImg,acx,away]]){
-    ctx.save();
-    ctx.beginPath();ctx.arc(lx,lcy,R+3*sc,0,Math.PI*2);ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=2*sc;ctx.stroke();
-    ctx.beginPath();ctx.arc(lx,lcy,R,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,.05)';ctx.fill();ctx.clip();
-    if(img){ctx.shadowColor='rgba(255,255,255,.15)';ctx.shadowBlur=10*sc;ctx.drawImage(img,lx-R*.85,lcy-R*.85,R*1.7,R*1.7);}
-    else{ctx.shadowBlur=0;ctx.fillStyle='rgba(255,255,255,.12)';ctx.beginPath();ctx.arc(lx,lcy,R,0,Math.PI*2);ctx.fill();ctx.fillStyle='rgba(255,255,255,.6)';ctx.font='900 '+Math.round(R*.9)+'px "Barlow Condensed",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText((teamName||'?')[0].toUpperCase(),lx,lcy);}
-    ctx.restore();
+  const {home,away,homeLogo,awayLogo,league,dt,score,bg1,bg2}=opts;
+  const W=cv.width,H=cv.height;
+  // Background gradient
+  const grad=ctx.createLinearGradient(0,0,W,H);
+  grad.addColorStop(0,bg1||'#0d1b2a');grad.addColorStop(1,bg2||'#1a0020');
+  ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
+  // Noise overlay
+  ctx.fillStyle='rgba(255,255,255,0.02)';
+  for(let i=0;i<60;i++){ctx.fillRect(Math.random()*W,Math.random()*H,1,1);}
+  // Center divider glow
+  const cx=W/2,cy=H/2;
+  const glowGrad=ctx.createRadialGradient(cx,cy,0,cx,cy,W*0.4);
+  glowGrad.addColorStop(0,'rgba(230,57,70,0.12)');glowGrad.addColorStop(1,'transparent');
+  ctx.fillStyle=glowGrad;ctx.fillRect(0,0,W,H);
+  // League badge (top center)
+  if(league){
+    ctx.save();ctx.font=`900 ${H*.05}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';
+    ctx.fillStyle='rgba(255,255,255,0.15)';ctx.fillText(league.toUpperCase(),cx,H*0.12);ctx.restore();
   }
-  // Glowing VS / score badge
-  const vsR=Math.round(28*sc);ctx.save();ctx.shadowColor='#e63946';ctx.shadowBlur=24*sc;ctx.fillStyle='#e63946';ctx.beginPath();ctx.arc(cx,lcy,vsR,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.restore();
-  ctx.fillStyle='#fff';ctx.font='900 '+Math.round(15*sc)+'px "Barlow Condensed",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-  if(mode==='highlights'&&score)ctx.fillText(score.trim(),cx,lcy);else ctx.fillText('VS',cx,lcy);
-  // Team names below logos
-  const ny=lcy+R+Math.round(18*sc),nfs=Math.round(21*sc);
-  ctx.font='800 '+nfs+'px "Barlow Condensed",sans-serif';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=12*sc;ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='top';
-  wrapText(ctx,home,hcx,ny,W*.38,nfs);wrapText(ctx,away,acx,ny,W*.38,nfs);ctx.shadowBlur=0;
-  // Date/time
-  if(DT){const dfs=Math.round(13*sc);ctx.font='600 '+dfs+'px "Barlow Condensed",sans-serif';ctx.fillStyle='rgba(255,255,255,.6)';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=8;ctx.fillText('🕐  '+DT,cx,H-Math.round(52*sc));ctx.shadowBlur=0;}
-  // Bottom CTA stripe
-  ctx.save();ctx.globalAlpha=.94;const stripe=ctx.createLinearGradient(0,H-Math.round(36*sc),W,H);stripe.addColorStop(0,'#e63946');stripe.addColorStop(1,'#c1121f');ctx.fillStyle=stripe;ctx.fillRect(0,H-Math.round(36*sc),W,Math.round(36*sc));ctx.restore();
-  ctx.font='800 '+Math.round(13*sc)+'px "Barlow Condensed",sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('▶  WATCH FREE ON '+(CFG.brandName||'SPORTS 803').toUpperCase(),cx,H-Math.round(18*sc));
-  drawBrandBadge(ctx,W,H,sc);
+  // VS or Score text (center)
+  const vsText=score||'VS';
+  ctx.save();ctx.font=`900 ${H*0.22}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(255,255,255,0.08)';ctx.fillText(vsText,cx,cy*1.05);
+  ctx.fillStyle='#ffffff';ctx.fillText(vsText,cx,cy);ctx.restore();
+  // Home team name (left)
+  if(home){ctx.save();ctx.font=`800 ${H*0.1}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffffff';ctx.fillText(home.slice(0,12).toUpperCase(),W*0.25,cy);ctx.restore();}
+  // Away team name (right)
+  if(away){ctx.save();ctx.font=`800 ${H*0.1}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffffff';ctx.fillText(away.slice(0,12).toUpperCase(),W*0.75,cy);ctx.restore();}
+  // Draw logos
+  async function drawLogo(url,x,y,size){
+    if(!url)return;
+    try{
+      const img=new Image();img.crossOrigin='anonymous';
+      await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
+      ctx.save();ctx.shadowColor='rgba(0,0,0,0.5)';ctx.shadowBlur=20;
+      ctx.drawImage(img,x-size/2,y-size/2,size,size);ctx.restore();
+    }catch(e){}
+  }
+  await Promise.all([drawLogo(homeLogo,W*0.25,cy-H*0.12,H*0.25),drawLogo(awayLogo,W*0.75,cy-H*0.12,H*0.25)]);
+  // Date/time (bottom)
+  if(dt){ctx.save();ctx.font=`600 ${H*0.045}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,0.55)';ctx.fillText(dt,cx,H*0.88);ctx.restore();}
+  // Brand watermark
+  const brand=CFG.brandName||'Sports 803';
+  ctx.save();ctx.font=`700 ${H*0.038}px 'Barlow Condensed',sans-serif`;ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,0.3)';ctx.fillText(brand.toUpperCase(),W*0.97,H*0.95);ctx.restore();
 }
-// ── Race thumbnail (left bar accent, banner image right, left-aligned title) ──
-async function drawRaceThumbnail(cv,opts){
-  const{name='',league='',datetime='',dt='',venue='',bg1='#0a0e1a',bg2='#1a0a00',bannerUrl=''}=opts;
-  const DT=datetime||dt;
-  const W=cv.width,H=cv.height,cx=W/2,sc=W/800;const ctx=cv.getContext('2d');
-  const bgImg=bannerUrl?await loadImgWithFallback(bannerUrl,''):null;
-  ctx.clearRect(0,0,W,H);
-  // Background
-  const bg=ctx.createLinearGradient(0,0,W,H);bg.addColorStop(0,bg1);bg.addColorStop(1,bg2);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
-  // Banner image (right half, faded)
-  if(bgImg){const iW=W*.62,iH=H,iX=W-iW;ctx.save();ctx.globalAlpha=.45;const ir=Math.max(iW/bgImg.width,iH/bgImg.height);ctx.drawImage(bgImg,iX+(iW-bgImg.width*ir)/2,(iH-bgImg.height*ir)/2,bgImg.width*ir,bgImg.height*ir);ctx.restore();const fade=ctx.createLinearGradient(iX,0,W,0);fade.addColorStop(0,bg1);fade.addColorStop(.5,'rgba(10,14,26,0)');fade.addColorStop(1,'rgba(10,14,26,.3)');ctx.fillStyle=fade;ctx.fillRect(0,0,W,H);}
-  // Left vertical accent bar (red→orange gradient)
-  const bar=ctx.createLinearGradient(0,0,0,H);bar.addColorStop(0,'#e63946');bar.addColorStop(1,'#f4a261');ctx.fillStyle=bar;ctx.fillRect(Math.round(28*sc),Math.round(H*.1),Math.round(5*sc),Math.round(H*.8));
-  // League pill (left-aligned)
-  const lgFs=Math.round(13*sc);ctx.font='700 '+lgFs+'px "Barlow Condensed",sans-serif';const lgT=league||'Motorsport';const lgW=ctx.measureText(lgT).width+22*sc,lgH=lgFs+14*sc;const lgX=Math.round(42*sc),lgY=Math.round(20*sc);ctx.save();ctx.globalAlpha=.92;ctx.fillStyle='#e63946';roundRect(ctx,lgX,lgY,lgW,lgH,4);ctx.fill();ctx.globalAlpha=1;ctx.restore();ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(lgT,lgX+10*sc,lgY+lgH/2);
-  // Event name (large, left-aligned, word-wrap)
-  const tFs=Math.round(32*sc);ctx.font='900 '+tFs+'px "Barlow Condensed",sans-serif';ctx.fillStyle='#fff';ctx.textAlign='left';ctx.textBaseline='top';ctx.shadowColor='rgba(0,0,0,.95)';ctx.shadowBlur=18;
-  const ws=(name||'Race Event').split(' ');let tl=[],tline='';const maxTW=W*.52;
-  for(const w of ws){const t=tline?tline+' '+w:w;if(ctx.measureText(t).width>maxTW&&tline){tl.push(tline);tline=w;}else tline=t;}tl.push(tline);
-  const tSY=Math.round(H*.28);tl.slice(0,3).forEach((l,i)=>ctx.fillText(l,Math.round(42*sc),tSY+i*(tFs+5*sc)));ctx.shadowBlur=0;
-  // Venue
-  if(venue){ctx.font='400 '+Math.round(14*sc)+'px "Barlow",sans-serif';ctx.fillStyle='rgba(255,255,255,.5)';ctx.textBaseline='top';ctx.fillText('📍 '+venue,Math.round(42*sc),tSY+tl.length*(tFs+5*sc)+8*sc);}
-  // Date/time
-  if(DT){ctx.font='700 '+Math.round(16*sc)+'px "Barlow Condensed",sans-serif';ctx.fillStyle='rgba(255,255,255,.9)';ctx.textBaseline='top';ctx.shadowColor='rgba(0,0,0,.9)';ctx.shadowBlur=8;ctx.fillText('🕐  '+DT,Math.round(42*sc),Math.round(H*.7));ctx.shadowBlur=0;}
-  // Bottom CTA stripe
-  const bH=Math.round(44*sc);ctx.save();ctx.globalAlpha=.94;const botG=ctx.createLinearGradient(0,H-bH,W,H);botG.addColorStop(0,'#e63946');botG.addColorStop(1,'#c1121f');ctx.fillStyle=botG;ctx.fillRect(0,H-bH,W,bH);ctx.restore();
-  ctx.font='800 '+Math.round(15*sc)+'px "Barlow Condensed",sans-serif';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('▶  WATCH FREE ON '+(CFG.brandName||'SPORTS 803').toUpperCase(),cx,H-bH/2);
-  drawBrandBadge(ctx,W,H,sc);
-}
-// ── Highlights thumbnail (gold score focal, dark warm bg) ──
 async function drawThumbHighlights(cv,opts){
-  const ctx=cv.getContext('2d');const{home,away,score,league,datetime,dt,bg1,bg2}=opts;const DT=datetime||dt;const W=cv.width,H=cv.height,sc=W/800;
+  const ctx=cv.getContext('2d');const {home,away,score,league,dt,bg1,bg2}=opts;const W=cv.width,H=cv.height;
   const grad=ctx.createLinearGradient(0,0,W,H);grad.addColorStop(0,bg1||'#1a0600');grad.addColorStop(1,bg2||'#2a0e00');ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
   ctx.fillStyle='rgba(244,162,97,0.06)';ctx.fillRect(0,H*0.7,W,H*0.3);
   ctx.save();ctx.font=`900 ${H*0.32}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='rgba(255,255,255,0.04)';ctx.fillText('HIGHLIGHTS',W/2,H/2);ctx.restore();
@@ -2558,20 +2497,18 @@ async function drawThumbHighlights(cv,opts){
   if(league){ctx.save();ctx.font=`700 ${H*0.055}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,0.4)';ctx.fillText(league.toUpperCase(),W/2,H*0.12);ctx.restore();}
   const brand=CFG.brandName||'Sports 803';ctx.save();ctx.font=`700 ${H*0.038}px 'Barlow Condensed',sans-serif`;ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,0.25)';ctx.fillText(brand.toUpperCase(),W*0.97,H*0.95);ctx.restore();
 }
-// ── Minimal thumbnail (clean border frame, monochrome) ──
-async function drawThumbMinimal(cv,opts){
-  const ctx=cv.getContext('2d');const{home,away,league,datetime,dt,score,bg1,bg2}=opts;const DT=datetime||dt;const W=cv.width,H=cv.height;
-  ctx.fillStyle=bg1||'#0c1018';ctx.fillRect(0,0,W,H);
-  ctx.strokeStyle='rgba(76,201,240,0.15)';ctx.lineWidth=2;ctx.strokeRect(W*0.04,H*0.04,W*0.92,H*0.92);
-  if(home&&away){ctx.save();ctx.font=`900 ${H*0.13}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffffff';ctx.fillText(`${home.slice(0,10).toUpperCase()} — ${away.slice(0,10).toUpperCase()}`,W/2,H/2);ctx.restore();}
-  if(score){ctx.save();ctx.font=`900 ${H*0.2}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='rgba(76,201,240,0.6)';ctx.fillText(score,W/2,H*0.3);ctx.restore();}
-  if(league){ctx.save();ctx.font=`600 ${H*0.05}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(76,201,240,0.5)';ctx.fillText(league.toUpperCase(),W/2,H*0.15);ctx.restore();}
-  if(DT){ctx.save();ctx.font=`500 ${H*0.042}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,0.35)';ctx.fillText(DT,W/2,H*0.85);ctx.restore();}
-  const brand=CFG.brandName||'Sports 803';ctx.save();ctx.font=`700 ${H*0.038}px 'Barlow Condensed',sans-serif`;ctx.textAlign='right';ctx.fillStyle='rgba(76,201,240,0.3)';ctx.fillText(brand.toUpperCase(),W*0.97,H*0.95);ctx.restore();
+async function drawThumbRace(cv,opts){
+  const ctx=cv.getContext('2d');const {home:name,league,dt,bg1,bg2}=opts;const W=cv.width,H=cv.height;
+  const grad=ctx.createLinearGradient(0,0,W,0);grad.addColorStop(0,bg1||'#0a0a0a');grad.addColorStop(1,bg2||'#1a1200');ctx.fillStyle=grad;ctx.fillRect(0,0,W,H);
+  for(let i=0;i<8;i++){ctx.strokeStyle=`rgba(255,166,0,${0.04+i*0.005})`;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,H*(0.1+i*0.1));ctx.lineTo(W,H*(0.1+i*0.1));ctx.stroke();}
+  ctx.save();ctx.font=`900 ${H*0.1}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='rgba(255,255,255,0.05)';ctx.fillText('FULL RACE REPLAY',W/2,H*0.3);ctx.restore();
+  if(name){ctx.save();ctx.font=`900 ${H*0.12}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffffff';ctx.fillText(name.toUpperCase().slice(0,22),W/2,H/2);ctx.restore();}
+  if(league){ctx.save();ctx.font=`700 ${H*0.06}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='#f4a261';ctx.fillText(league.toUpperCase(),W/2,H*0.7);ctx.restore();}
+  if(dt){ctx.save();ctx.font=`600 ${H*0.045}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,0.5)';ctx.fillText(dt,W/2,H*0.85);ctx.restore();}
+  const brand=CFG.brandName||'Sports 803';ctx.save();ctx.font=`700 ${H*0.038}px 'Barlow Condensed',sans-serif`;ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,0.25)';ctx.fillText(brand.toUpperCase(),W*0.97,H*0.95);ctx.restore();
 }
-// ── Breaking news thumbnail ──
 async function drawThumbBreaking(cv,opts){
-  const ctx=cv.getContext('2d');const{home:title,league,datetime,dt}=opts;const DT=datetime||dt;const W=cv.width,H=cv.height,sc=W/800;
+  const ctx=cv.getContext('2d');const {home:title,league,dt}=opts;const W=cv.width,H=cv.height;
   ctx.fillStyle='#0a0000';ctx.fillRect(0,0,W,H);
   ctx.fillStyle='rgba(230,57,70,0.2)';ctx.fillRect(0,0,W,H*0.12);
   ctx.save();ctx.font=`900 ${H*0.08}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#e63946';ctx.fillText('BREAKING',W/2,H*0.06);ctx.restore();
@@ -2580,28 +2517,34 @@ async function drawThumbBreaking(cv,opts){
   for(const w of words){const test=line+w+' ';if(ctx.measureText(test).width>W*0.85&&line){lines.push(line.trim());line=w+' ';}else line=test;}
   lines.push(line.trim());lines.forEach((l,i)=>ctx.fillText(l,W/2,y+(i-(lines.length-1)/2)*H*0.13));ctx.restore();}
   if(league){ctx.save();ctx.font=`700 ${H*0.055}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,0.45)';ctx.fillText(league.toUpperCase(),W/2,H*0.78);ctx.restore();}
-  if(DT){ctx.save();ctx.font=`600 ${H*0.042}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,0.35)';ctx.fillText(DT,W/2,H*0.88);ctx.restore();}
+  if(dt){ctx.save();ctx.font=`600 ${H*0.042}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,0.35)';ctx.fillText(dt,W/2,H*0.88);ctx.restore();}
   const brand=CFG.brandName||'Sports 803';ctx.save();ctx.font=`700 ${H*0.038}px 'Barlow Condensed',sans-serif`;ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,0.25)';ctx.fillText(brand.toUpperCase(),W*0.97,H*0.95);ctx.restore();
 }
-// ── Dispatch to correct draw function ──
+async function drawThumbMinimal(cv,opts){
+  const ctx=cv.getContext('2d');const {home,away,league,dt,score,bg1,bg2}=opts;const W=cv.width,H=cv.height;
+  ctx.fillStyle=bg1||'#0c1018';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(76,201,240,0.15)';ctx.lineWidth=2;ctx.strokeRect(W*0.04,H*0.04,W*0.92,H*0.92);
+  if(home&&away){ctx.save();ctx.font=`900 ${H*0.13}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffffff';ctx.fillText(`${home.slice(0,10).toUpperCase()} — ${away.slice(0,10).toUpperCase()}`,W/2,H/2);ctx.restore();}
+  if(score){ctx.save();ctx.font=`900 ${H*0.2}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='rgba(76,201,240,0.6)';ctx.fillText(score,W/2,H*0.3);ctx.restore();}
+  if(league){ctx.save();ctx.font=`600 ${H*0.05}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(76,201,240,0.5)';ctx.fillText(league.toUpperCase(),W/2,H*0.15);ctx.restore();}
+  if(dt){ctx.save();ctx.font=`500 ${H*0.042}px 'Barlow Condensed',sans-serif`;ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,0.35)';ctx.fillText(dt,W/2,H*0.85);ctx.restore();}
+  const brand=CFG.brandName||'Sports 803';ctx.save();ctx.font=`700 ${H*0.038}px 'Barlow Condensed',sans-serif`;ctx.textAlign='right';ctx.fillStyle='rgba(76,201,240,0.3)';ctx.fillText(brand.toUpperCase(),W*0.97,H*0.95);ctx.restore();
+}
 async function drawThumb(cv,opts,tpl){
-  if(tpl==='race')return drawRaceThumbnail(cv,opts);
-  if(tpl==='highlights')return drawThumbHighlights(cv,opts);
-  if(tpl==='breaking')return drawThumbBreaking(cv,opts);
-  if(tpl==='minimal')return drawThumbMinimal(cv,opts);
-  return drawMatchThumbnail(cv,opts);// 'classic' or default
+  const drawFn={classic:drawThumbClassic,highlights:drawThumbHighlights,race:drawThumbRace,breaking:drawThumbBreaking,minimal:drawThumbMinimal}[tpl||'classic']||drawThumbClassic;
+  await drawFn(cv,opts);
 }
 function getThumbOpts(prefix){
-  const lg=prefix==='tb'?v('tb-league'):v('compose-league');
-  const [c1,c2]=getThumbColors(lg);
+  const league=el(prefix+'-league')?v(prefix+'-league'):selectedThumbTpl==='race'?v('tb-league'):v('tb-league');
+  const [c1,c2]=getThumbColors(league);
   return{
     home:prefix==='tb'?v('tb-home'):v('compose-home'),
     away:prefix==='tb'?v('tb-away'):v('compose-away'),
-    league:prefix==='tb'?v('tb-league'):LEAGUES.find(l=>l.id===lg)?.name||lg,
-    datetime:prefix==='tb'?v('tb-dt'):v('compose-datetime'),
+    league:prefix==='tb'?v('tb-league'):LEAGUES.find(l=>l.id===v('compose-league'))?.name||v('compose-league'),
+    dt:prefix==='tb'?v('tb-dt'):v('compose-datetime'),
     score:prefix==='tb'?v('tb-score'):v('compose-score'),
-    hLogo:prefix==='tb'?v('tb-home-logo'):'',
-    aLogo:prefix==='tb'?v('tb-away-logo'):'',
+    homeLogo:prefix==='tb'?v('tb-home-logo'):null,
+    awayLogo:prefix==='tb'?v('tb-away-logo'):null,
     bg1:prefix==='tb'?el('tb-bg1')?.value||c1:c1,
     bg2:prefix==='tb'?el('tb-bg2')?.value||c2:c2,
   };
@@ -2612,33 +2555,26 @@ async function schedTBThumb(){
   const aspect=el('tb-aspect')?.value||'16:9';
   setCanvasSize(cv,qual,aspect);
   const opts=getThumbOpts('tb');
-  // Auto-fetch logos when URLs blank — uses upgraded resolveLogoUrl
-  if(!opts.hLogo&&opts.home){const url=await resolveLogoUrl(opts.home);if(url){opts.hLogo=url;set('tb-home-logo',url);if(el('tb-home-chip'))await logoChipImg(opts.home,'tb-home-chip');}}
-  if(!opts.aLogo&&opts.away){const url=await resolveLogoUrl(opts.away);if(url){opts.aLogo=url;set('tb-away-logo',url);if(el('tb-away-chip'))await logoChipImg(opts.away,'tb-away-chip');}}
+  // Auto-fetch logos if URLs blank
+  if(!opts.homeLogo&&opts.home){const url=await resolveLogoUrl(opts.home);if(url){opts.homeLogo=url;set('tb-home-logo',url);}}
+  if(!opts.awayLogo&&opts.away){const url=await resolveLogoUrl(opts.away);if(url){opts.awayLogo=url;set('tb-away-logo',url);}}
   setThumbStatus('tb-status','Rendering…','loading');
   const prog=el('tb-progress');if(prog)prog.style.width='40%';
-  await drawThumb(cv,opts,selectedThumbTpl||'classic');
-  if(prog)prog.style.width='100%';setTimeout(()=>{if(prog)prog.style.width='0%';},600);
-  setThumbStatus('tb-status','Ready ✓','done');
+  await drawThumb(cv,opts,selectedThumbTpl);
+  if(prog)prog.style.width='100%';
+  setTimeout(()=>{if(prog)prog.style.width='0%';},600);
+  setThumbStatus('tb-status','Ready','done');
   CFG.thumbsGenerated=(CFG.thumbsGenerated||0)+1;if(el('kpi-thumbs'))el('kpi-thumbs').textContent=CFG.thumbsGenerated;
 }
 async function buildStandaloneThumb(){await schedTBThumb();}
 async function buildComposeThumb(){
   const cv=el('compose-canvas');if(!cv)return;
   setCanvasSize(cv,'800','16:9');
-  const home=v('compose-home'),away=v('compose-away');
-  const lg=v('compose-league');const[c1,c2]=getThumbColors(lg);
-  const hLogoUrl=home?await resolveLogoUrl(home):null;
-  const aLogoUrl=away?await resolveLogoUrl(away):null;
-  if(home&&el('compose-home-chip'))await logoChipImg(home,'compose-home-chip');
-  if(away&&el('compose-away-chip'))await logoChipImg(away,'compose-away-chip');
-  const artType=el('compose-article-type')?.value||'preview';
-  const tpl=artType==='highlights'?'highlights':artType==='race'?'race':artType==='breaking'?'breaking':'classic';
-  const opts={home,away,hLogo:hLogoUrl||'',aLogo:aLogoUrl||'',
-    league:LEAGUES.find(l=>l.id===lg)?.name||lg||'',
-    datetime:v('compose-datetime'),score:v('compose-score'),
-    mode:artType==='highlights'?'highlights':'preview',bg1:c1,bg2:c2};
+  const opts=getThumbOpts('compose');
+  if(!opts.homeLogo&&opts.home){const url=await resolveLogoUrl(opts.home);if(url)opts.homeLogo=url;}
+  if(!opts.awayLogo&&opts.away){const url=await resolveLogoUrl(opts.away);if(url)opts.awayLogo=url;}
   setThumbStatus('compose-thumb-status','Rendering…','loading');
+  const tpl=v('compose-article-type')==='highlights'?'highlights':v('compose-article-type')==='race'?'race':'classic';
   await drawThumb(cv,opts,tpl);
   setThumbStatus('compose-thumb-status','Done ✓','done');
 }
@@ -2675,43 +2611,37 @@ function sendThumbToCompose(){
 }
 async function batchGenerateThumbs(){
   if(!eventsData.length){toast('Fetch events first','w');return;}
-  const batch=Math.min(eventsData.length,10);toast(`Generating ${batch} thumbnails…`,'i');let count=0;
-  for(const ev of eventsData.slice(0,batch)){
+  toast(`Generating ${Math.min(eventsData.length,10)} thumbnails…`,'i');
+  let count=0;
+  for(const ev of eventsData.slice(0,10)){
     const comp=ev.competitions?.[0];
     const home=comp?.competitors?.find(c=>c.homeAway==='home');
     const away=comp?.competitors?.find(c=>c.homeAway==='away');
     const cv=document.createElement('canvas');setCanvasSize(cv,'800','16:9');
-    const[c1,c2]=getThumbColors(ev._league);
-    const isRace=LEAGUES.find(l=>l.id===ev._league)?.type==='race';
-    const hLogo=home?.team?.displayName?await resolveLogoUrl(home.team.displayName):null;
-    const aLogo=away?.team?.displayName?await resolveLogoUrl(away.team.displayName):null;
-    try{await drawThumb(cv,{home:home?.team?.displayName,away:away?.team?.displayName,hLogo,aLogo,league:ev._leagueName,datetime:fmtDate(ev.date),bg1:c1,bg2:c2},isRace?'race':'classic');count++;}catch(e){}
-    await new Promise(r=>setTimeout(r,100));
+    const [c1,c2]=getThumbColors(ev._league);
+    await drawThumb(cv,{home:home?.team?.displayName,away:away?.team?.displayName,league:ev._leagueName,dt:fmtDate(ev.date),bg1:c1,bg2:c2},'classic');
+    count++;
   }
   CFG.thumbsGenerated=(CFG.thumbsGenerated||0)+count;saveAll();
   if(el('kpi-thumbs'))el('kpi-thumbs').textContent=CFG.thumbsGenerated;
-  toast(`${count} thumbnails generated ✓`,'s');
+  toast(`${count} thumbnails generated`,'s');
 }
 function onTBParseInput(){
   const raw=v('tb-parse');
   const match=raw.match(/^(.+?)\s+(?:vs?\.?|x|–|-)\s+(.+)$/i);
   if(match){
-    const h=match[1].trim(),a=match[2].trim();
+    const [,h,a]=[match[1].trim(),match[2].trim()];
     set('tb-home',h);set('tb-away',a);
     if(el('tbp-home'))el('tbp-home').textContent=h;if(el('tbp-away'))el('tbp-away').textContent=a;
     el('tb-parsed-row').style.display='flex';
-    // Live logo chip preview
-    if(h)logoChipImg(h,'tb-home-chip');if(a)logoChipImg(a,'tb-away-chip');
     debounce(schedTBThumb,300)();
   }else{el('tb-parsed-row').style.display='none';}
 }
 
 // ═══════════════════════════════════════════════════
-// SECTION 12 — LOGO RESOLUTION (v9 — upgraded engine)
+// SECTION 12 — LOGO RESOLUTION
 // ═══════════════════════════════════════════════════
-// wsrv.nl proxy: CORS-safe image proxy with resize
-function wsrv(url,size=200){if(!url||url.startsWith('data:')||url.startsWith('blob:'))return url;return'https://wsrv.nl/?url='+encodeURIComponent(url)+'&w='+size+'&h='+size+'&fit=contain&n=-1&we';}
-const TSDB_INFLIGHT=new Set();// prevents duplicate parallel API calls for same team
+const PROXY='https://wsrv.nl/?url=';
 const PL_TEAM_CODES={
   'Manchester City':43,'Arsenal':1,'Liverpool':14,'Chelsea':4,'Tottenham':6,'Manchester United':32,
   'Newcastle':23,'Brighton':36,'Aston Villa':7,'West Ham':21,'Brentford':189,'Fulham':34,
@@ -2722,50 +2652,19 @@ async function resolveLogoUrl(teamName){
   if(!teamName)return null;
   const key=teamName.toLowerCase().trim();
   if(LOGO_OVERRIDES[key])return LOGO_OVERRIDES[key];
-  // 7-day cache hit
-  if(LOGO_CACHE[key]&&Date.now()-LOGO_CACHE[key].ts<86400000*7)return LOGO_CACHE[key].url||null;
-  // In-flight dedup — if another call is already fetching this team, wait for it
-  if(TSDB_INFLIGHT.has(key)){await new Promise(r=>setTimeout(r,2500));return LOGO_CACHE[key]?.url||null;}
-  TSDB_INFLIGHT.add(key);
-  try{
-    // 1. Premier League CDN (instant, no rate limit)
-    const plCode=Object.entries(PL_TEAM_CODES).find(([n])=>n.toLowerCase()===key||key.includes(n.toLowerCase()));
-    if(plCode){const url=wsrv('https://resources.premierleague.com/premierleague/badges/rb/t'+plCode[1]+'.webp');cacheLogoUrl(key,url);return url;}
-    // 2. TheSportsDB (most comprehensive)
-    try{const r=await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(teamName)}`);if(r.ok){const d=await r.json();const team=d?.teams?.[0];const raw=team?.strTeamBadge||team?.strBadge||team?.strTeamLogo||'';if(raw){const proxied=wsrv(raw);cacheLogoUrl(key,proxied);return proxied;}}}catch(e){}
-    // 3. ESPN CDN rewrite
-    const espnId=espnTeamId(teamName);
-    if(espnId){const url=`https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/${espnId}.png&w=100&h=100&cquality=40&scale=crop&location=origin&transparent=true`;cacheLogoUrl(key,url);return url;}
-    cacheLogoUrl(key,'');return null;
-  }finally{TSDB_INFLIGHT.delete(key);}
+  if(LOGO_CACHE[key]&&Date.now()-LOGO_CACHE[key].ts<86400000*7)return LOGO_CACHE[key].url;
+  // 1. Premier League CDN
+  const plCode=Object.entries(PL_TEAM_CODES).find(([n])=>n.toLowerCase()===key||key.includes(n.toLowerCase()));
+  if(plCode){const url=PROXY+'https://resources.premierleague.com/premierleague/badges/rb/t'+plCode[1]+'.webp';cacheLogoUrl(key,url);return url;}
+  // 2. TheSportsDB
+  try{const r=await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t=${encodeURIComponent(teamName)}`);const j=await r.json();const team=j.teams?.[0];const url=team?.strBadge||team?.strTeamBadge;if(url){const proxied=PROXY+url;cacheLogoUrl(key,proxied);return proxied;}}catch(e){}
+  // 3. ESPN CDN (safe rewrite)
+  const espnId=espnTeamId(teamName);if(espnId){const url=`https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/${espnId}.png&w=100&h=100&cquality=40&scale=crop&location=origin&transparent=true`;cacheLogoUrl(key,url);return url;}
+  return null;
 }
 function cacheLogoUrl(key,url){LOGO_CACHE[key]={url,ts:Date.now()};try{localStorage.setItem(SK.LOGO,JSON.stringify({data:LOGO_CACHE,ts:Date.now()}));}catch(e){}}
 function parseLOOverrides(raw){const map={};if(!raw)return map;raw.split('\n').forEach(line=>{const [k,...v]=line.split('=');if(k&&v.length)map[k.trim().toLowerCase()]=v.join('=').trim();});return map;}
-function espnTeamId(name){const map={'manchester city':'mancity','arsenal':'arsenal','liverpool':'liverpool','chelsea':'chelsea','real madrid':'realmadrid','barcelona':'barcelona','juventus':'juventus','psg':'psg','bayern munich':'bayernmunich','borussia dortmund':'dortmund','atletico madrid':'atleticomadrid','ac milan':'milan','inter milan':'inter','roma':'roma','napoli':'napoli','porto':'porto','benfica':'benfica','ajax':'ajax'};return map[name.toLowerCase()]||null;}
-// Batch-enrich logos for all loaded events — fires after fetch, then re-renders grid
-async function enrichEventLogos(events){
-  const needed=new Set();
-  for(const ev of events){const comp=ev.competitions?.[0];for(const side of['home','away']){const t=comp?.competitors?.find(c=>c.homeAway===side);const name=t?.team?.displayName;if(name){const k=name.toLowerCase();if(!LOGO_CACHE[k]&&!TSDB_INFLIGHT.has(k))needed.add(name);}}}
-  const arr=[...needed];
-  for(let i=0;i<arr.length;i+=6){await Promise.allSettled(arr.slice(i,i+6).map(n=>resolveLogoUrl(n)));if(i+6<arr.length)await new Promise(r=>setTimeout(r,100));}
-  renderEventsGrid();// re-render cards with logos now in cache
-  const c=Object.values(LOGO_CACHE).filter(v=>v.url).length;
-  if(el('logo-res-status'))el('logo-res-status').textContent=`Logos: ${c} cached`;
-}
-// Live logo chip update for compose inputs
-async function logoChipImg(teamName,chipId){
-  const chip=el(chipId);if(!chip)return;
-  const url=await resolveLogoUrl(teamName);
-  if(url){chip.innerHTML=`<img src="${wsrv(url,80)}" onerror="this.style.display='none'" alt="${escHtml(teamName)}" style="width:100%;height:100%;object-fit:contain">`;}
-  else{chip.textContent=(teamName||'?')[0].toUpperCase();}
-}
-// Image loader with proxy fallback (used by canvas engine)
-function loadImg(src){return new Promise(res=>{if(!src)return res(null);const img=new Image();img.crossOrigin='anonymous';const t=setTimeout(()=>res(null),9000);img.onload=()=>{clearTimeout(t);res(img);};img.onerror=()=>{clearTimeout(t);res(null);};img.src=src;});}
-async function loadImgWithFallback(url,teamName=''){
-  if(url){let r=await loadImg(wsrv(url,400));if(r)return r;r=await loadImg(url);if(r)return r;}
-  if(teamName){const tsdbUrl=await resolveLogoUrl(teamName);if(tsdbUrl){let r=await loadImg(wsrv(tsdbUrl,400));if(r)return r;r=await loadImg(tsdbUrl);if(r)return r;}}
-  return null;
-}
+function espnTeamId(name){const map={'manchester city':'mancity','arsenal':'arsenal','liverpool':'liverpool','chelsea':'chelsea','real madrid':'realmadrid','barcelona':'barcelona','juventus':'juventus','psg':'psg','bayern munich':'bayernmunich','borussia dortmund':'dortmund'};return map[name.toLowerCase()]||null;}
 
 // ═══════════════════════════════════════════════════
 // SECTION 13 — CHANNELS & STREAMS MODULE
